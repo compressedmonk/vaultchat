@@ -13,7 +13,7 @@ export async function GET() {
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, email: true, encryptionSalt: true, keysStatus: true, encryptionPasswordMode: true },
+    select: { id: true, email: true, encryptionSalt: true, keysStatus: true, encryptionPasswordMode: true, publicKeySpkiB64: true },
   })
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -34,6 +34,7 @@ export async function GET() {
       email: user.email,
       keysStatus: user.keysStatus ?? 'missing',
       encryptionPasswordMode: user.encryptionPasswordMode ?? 'same_as_login',
+      publicKeySpkiB64: user.publicKeySpkiB64 ?? null,
       encryptionSalt,
       kdf: {
         name: 'PBKDF2',

@@ -60,6 +60,7 @@ export default function ChatPage() {
           onSelect={setActiveId}
           onNewChat={handleNewChat}
           onDelete={handleDeleteConversation}
+          onRefreshConversations={loadConversations}
           open={sidebarOpen}
           onToggle={() => setSidebarOpen(!sidebarOpen)}
         />
@@ -70,6 +71,7 @@ export default function ChatPage() {
             onConversationCreated={handleConversationCreated}
             onRefreshConversations={loadConversations}
             onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+            onNewChat={handleNewChat}
             sidebarOpen={sidebarOpen}
           />
         </main>

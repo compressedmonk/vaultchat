@@ -16,8 +16,8 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" translate="no" className="dark">
-      <body className="antialiased">
+    <html lang="en" translate="no" className="dark" suppressHydrationWarning>
+      <body className="antialiased" suppressHydrationWarning>
         <VaultUnlockProvider>
           {children}
         </VaultUnlockProvider>

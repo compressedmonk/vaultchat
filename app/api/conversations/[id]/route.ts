@@ -43,6 +43,7 @@ export async function PATCH(
 
   const data: Record<string, unknown> = {}
   if (typeof body.titleEnc === 'string') data.titleEnc = body.titleEnc
+  if (typeof body.sealedKeyB64 === 'string') data.sealedKeyB64 = body.sealedKeyB64
   if (typeof body.model === 'string') data.model = body.model
 
   const updated = await prisma.conversation.update({

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { deriveKek, encryptWithKek } from '@/lib/crypto/client-crypto'
+import { PasswordInput } from '@/app/components/ui/PasswordInput'
 
 export default function RegisterPage() {
   const router = useRouter()
@@ -95,6 +96,7 @@ export default function RegisterPage() {
         body: JSON.stringify({ email, password }),
       })
       if (loginRes.ok) {
+        sessionStorage.setItem('vault_auto_unlock_pwd', keyPassword)
         router.push('/chat')
       } else {
         router.push('/login')
@@ -144,25 +146,40 @@ export default function RegisterPage() {
             <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
               Login password
             </label>
-            <input
-              type="password"
+            <PasswordInput
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="vault-input"
               placeholder="Min. 8 characters"
               required
             />
+            {password.length > 0 && (
+              <div className="mt-2 space-y-0.5">
+                {[
+                  { ok: password.length >= 8, label: '8+ characters' },
+                  { ok: /[A-Z]/.test(password), label: 'Uppercase letter' },
+                  { ok: /[a-z]/.test(password), label: 'Lowercase letter' },
+                  { ok: /[0-9]/.test(password), label: 'Number' },
+                ].map((r) => (
+                  <div key={r.label} className="flex items-center gap-1.5 text-xs" style={{ color: r.ok ? 'var(--success)' : 'var(--text-muted)' }}>
+                    {r.ok ? (
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12" /></svg>
+                    ) : (
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /></svg>
+                    )}
+                    {r.label}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
               Confirm login password
             </label>
-            <input
-              type="password"
+            <PasswordInput
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              className="vault-input"
               placeholder="Repeat password"
               required
             />
@@ -207,19 +224,15 @@ export default function RegisterPage() {
                 <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
                   Even if someone gets your login password, they cannot decrypt your data without this separate key.
                 </p>
-                <input
-                  type="password"
+                <PasswordInput
                   value={encPassword}
                   onChange={(e) => setEncPassword(e.target.value)}
-                  className="vault-input"
                   placeholder="Min. 12 characters"
                   required
                 />
-                <input
-                  type="password"
+                <PasswordInput
                   value={confirmEncPassword}
                   onChange={(e) => setConfirmEncPassword(e.target.value)}
-                  className="vault-input"
                   placeholder="Confirm encryption password"
                   required
                 />

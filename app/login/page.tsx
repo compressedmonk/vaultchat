@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { PasswordInput } from '@/app/components/ui/PasswordInput'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -75,11 +76,9 @@ export default function LoginPage() {
             <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
               Password
             </label>
-            <input
-              type="password"
+            <PasswordInput
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="vault-input"
               placeholder="Enter your password"
               required
             />
