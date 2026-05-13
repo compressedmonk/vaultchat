@@ -89,59 +89,147 @@ export async function POST(request: NextRequest) {
   const history: { role: string; content: string }[] = body.history ?? []
   const requestModel: string = body.model ?? DEFAULT_MODEL
   const isDecoy: boolean = body.isDecoy === true
+  const isTemporary: boolean = body.temporary === true
 
   if (!userMessage.trim()) {
     return NextResponse.json({ error: 'Empty message' }, { status: 400 })
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { publicKeySpkiB64: true },
-  })
-  if (!user?.publicKeySpkiB64) {
-    return NextResponse.json({ error: 'Encryption keys not set up' }, { status: 400 })
-  }
+  if (!isTemporary) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { publicKeySpkiB64: true },
+    })
+    if (!user?.publicKeySpkiB64) {
+      return NextResponse.json({ error: 'Encryption keys not set up' }, { status: 400 })
+    }
 
-  const pubKey = user.publicKeySpkiB64
-  let isNew = false
+    const pubKey = user.publicKeySpkiB64
+    let isNew = false
 
-  if (!conversationId) {
-    const titleAesKey = randomBytes(32)
-    const titleSealedKeyB64 = wrapAesKeyWithPublicKey(pubKey, titleAesKey)
+    if (!conversationId) {
+      const titleAesKey = randomBytes(32)
+      const titleSealedKeyB64 = wrapAesKeyWithPublicKey(pubKey, titleAesKey)
 
-    const created = await prisma.conversation.create({
+      const created = await prisma.conversation.create({
+        data: {
+          userId,
+          sealedKeyB64: titleSealedKeyB64,
+          model: requestModel,
+          isDecoy,
+        },
+      })
+      conversationId = created.id
+      isNew = true
+    } else {
+      const existing = await prisma.conversation.findFirst({
+        where: { id: conversationId, userId },
+      })
+      if (!existing) {
+        return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
+      }
+    }
+
+    const { sealedKeyB64: userSealedKey, contentEnc: userContentEnc } = sealMessage(pubKey, userMessage)
+    await prisma.message.create({
       data: {
-        userId,
-        sealedKeyB64: titleSealedKeyB64,
-        model: requestModel,
-        isDecoy,
+        conversationId,
+        role: 'user',
+        contentEnc: userContentEnc,
+        sealedKeyB64: userSealedKey,
       },
     })
-    conversationId = created.id
-    isNew = true
-  } else {
-    const existing = await prisma.conversation.findFirst({
-      where: { id: conversationId, userId },
-    })
-    if (!existing) {
-      return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
+
+    const apiMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+      { role: 'system', content: SYSTEM_PROMPT },
+    ]
+    for (const h of history) {
+      if (h.role === 'user' || h.role === 'assistant') {
+        apiMessages.push({ role: h.role, content: h.content })
+      }
     }
+    apiMessages.push({ role: 'user', content: userMessage })
+
+    const openai = getOpenAI()
+    const model = requestModel
+
+    let stream: AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>
+    try {
+      stream = await openai.chat.completions.create({
+        model,
+        messages: apiMessages,
+        stream: true,
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'OpenAI error'
+      return NextResponse.json({ error: msg }, { status: 502 })
+    }
+
+    const encoder = new TextEncoder()
+    let fullResponse = ''
+    const convId = conversationId
+    const shouldGenerateTitle = isNew
+
+    const readableStream = new ReadableStream({
+      async start(controller) {
+        try {
+          for await (const chunk of stream) {
+            const content = chunk.choices[0]?.delta?.content
+            if (content) {
+              fullResponse += content
+            }
+            const line = `data: ${JSON.stringify(chunk)}\n\n`
+            controller.enqueue(encoder.encode(line))
+          }
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+          controller.close()
+
+          if (fullResponse) {
+            const { sealedKeyB64: asstSealedKey, contentEnc: asstContentEnc } = sealMessage(
+              pubKey,
+              fullResponse
+            )
+            await prisma.message.create({
+              data: {
+                conversationId: convId,
+                role: 'assistant',
+                contentEnc: asstContentEnc,
+                sealedKeyB64: asstSealedKey,
+                model,
+              },
+            })
+            await prisma.conversation.update({
+              where: { id: convId },
+              data: { updatedAt: new Date() },
+            })
+
+            if (shouldGenerateTitle) {
+              generateTitle(openai, userMessage, fullResponse, pubKey, convId)
+            }
+          }
+        } catch (err) {
+          const errMsg = err instanceof Error ? err.message : 'Stream error'
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: errMsg })}\n\n`))
+          controller.close()
+        }
+      },
+    })
+
+    return new Response(readableStream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+        'X-Conversation-Id': conversationId,
+        'X-Is-New': isNew ? '1' : '0',
+      },
+    })
   }
 
-  const { sealedKeyB64: userSealedKey, contentEnc: userContentEnc } = sealMessage(pubKey, userMessage)
-  await prisma.message.create({
-    data: {
-      conversationId,
-      role: 'user',
-      contentEnc: userContentEnc,
-      sealedKeyB64: userSealedKey,
-    },
-  })
-
+  // Temporary chat: no DB writes, just stream from OpenAI
   const apiMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
     { role: 'system', content: SYSTEM_PROMPT },
   ]
-
   for (const h of history) {
     if (h.role === 'user' || h.role === 'assistant') {
       apiMessages.push({ role: h.role, content: h.content })
@@ -150,12 +238,11 @@ export async function POST(request: NextRequest) {
   apiMessages.push({ role: 'user', content: userMessage })
 
   const openai = getOpenAI()
-  const model = requestModel
 
   let stream: AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>
   try {
     stream = await openai.chat.completions.create({
-      model,
+      model: requestModel,
       messages: apiMessages,
       stream: true,
     })
@@ -165,47 +252,15 @@ export async function POST(request: NextRequest) {
   }
 
   const encoder = new TextEncoder()
-  let fullResponse = ''
-  const convId = conversationId
-  const shouldGenerateTitle = isNew
-
   const readableStream = new ReadableStream({
     async start(controller) {
       try {
         for await (const chunk of stream) {
-          const content = chunk.choices[0]?.delta?.content
-          if (content) {
-            fullResponse += content
-          }
           const line = `data: ${JSON.stringify(chunk)}\n\n`
           controller.enqueue(encoder.encode(line))
         }
         controller.enqueue(encoder.encode('data: [DONE]\n\n'))
         controller.close()
-
-        if (fullResponse) {
-          const { sealedKeyB64: asstSealedKey, contentEnc: asstContentEnc } = sealMessage(
-            pubKey,
-            fullResponse
-          )
-          await prisma.message.create({
-            data: {
-              conversationId: convId,
-              role: 'assistant',
-              contentEnc: asstContentEnc,
-              sealedKeyB64: asstSealedKey,
-              model,
-            },
-          })
-          await prisma.conversation.update({
-            where: { id: convId },
-            data: { updatedAt: new Date() },
-          })
-
-          if (shouldGenerateTitle) {
-            generateTitle(openai, userMessage, fullResponse, pubKey, convId)
-          }
-        }
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : 'Stream error'
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: errMsg })}\n\n`))
@@ -219,8 +274,6 @@ export async function POST(request: NextRequest) {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       Connection: 'keep-alive',
-      'X-Conversation-Id': conversationId,
-      'X-Is-New': isNew ? '1' : '0',
     },
   })
 }

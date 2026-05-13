@@ -87,6 +87,7 @@ export function ChatView({
   const [modelOpen, setModelOpen] = useState(false)
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [showScrollDown, setShowScrollDown] = useState(false)
+  const [temporaryChat, setTemporaryChat] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
   const modelDropdownRef = useRef<HTMLDivElement>(null)
@@ -94,6 +95,10 @@ export function ChatView({
   useEffect(() => {
     setSelectedModel(getStoredModel())
   }, [])
+
+  useEffect(() => {
+    setTemporaryChat(false)
+  }, [conversationId])
 
   useEffect(() => {
     if (!conversationId || !privateKey) {
@@ -205,11 +210,12 @@ export function ChatView({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            conversationId,
+            conversationId: temporaryChat ? null : conversationId,
             message: content,
             history,
             model: selectedModel,
             isDecoy: stealthConfig?.enabled ? !stealthUnlocked : false,
+            temporary: temporaryChat,
           }),
           signal: controller.signal,
         })
@@ -224,10 +230,12 @@ export function ChatView({
           return
         }
 
-        const newConvId = res.headers.get('x-conversation-id')
-        const isNew = res.headers.get('x-is-new') === '1'
-        if (newConvId && isNew) {
-          onConversationCreated(newConvId)
+        if (!temporaryChat) {
+          const newConvId = res.headers.get('x-conversation-id')
+          const isNew = res.headers.get('x-is-new') === '1'
+          if (newConvId && isNew) {
+            onConversationCreated(newConvId)
+          }
         }
 
         const reader = res.body?.getReader()
@@ -279,8 +287,11 @@ export function ChatView({
         }
         setStreamContent('')
 
-        if (isNew) {
-          setTimeout(() => onRefreshConversations(), 3000)
+        if (!temporaryChat) {
+          const isNew = res.headers.get('x-is-new') === '1'
+          if (isNew) {
+            setTimeout(() => onRefreshConversations(), 3000)
+          }
         }
       } catch (e) {
         if ((e as Error).name !== 'AbortError') {
@@ -294,7 +305,7 @@ export function ChatView({
         abortRef.current = null
       }
     },
-    [conversationId, streaming, onConversationCreated, onRefreshConversations, messages, selectedModel, stealthConfig, stealthUnlocked]
+    [conversationId, streaming, onConversationCreated, onRefreshConversations, messages, selectedModel, stealthConfig, stealthUnlocked, temporaryChat]
   )
 
   const handleSend = useCallback((content: string) => doSend(content, false), [doSend])
@@ -401,13 +412,51 @@ export function ChatView({
         </div>
 
         <div className="ml-auto flex items-center gap-2">
-          <span className="text-[11px] px-2 py-0.5 rounded-md font-medium" style={{ background: 'var(--accent-subtle)', color: 'var(--accent)' }}>
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="inline-block mr-0.5 -mt-px">
-              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-              <path d="M7 11V7a5 5 0 0110 0v4" />
-            </svg>
-            Encrypted
-          </span>
+          {!conversationId && (
+            <button
+              onClick={() => setTemporaryChat((v) => !v)}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all"
+              style={{
+                background: temporaryChat ? 'rgba(234, 179, 8, 0.15)' : 'transparent',
+                color: temporaryChat ? '#eab308' : 'var(--text-muted)',
+                border: temporaryChat ? '1px solid rgba(234, 179, 8, 0.3)' : '1px solid transparent',
+              }}
+              onMouseEnter={(e) => {
+                if (!temporaryChat) {
+                  e.currentTarget.style.background = 'var(--bg-hover)'
+                  e.currentTarget.style.color = 'var(--text-secondary)'
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!temporaryChat) {
+                  e.currentTarget.style.background = 'transparent'
+                  e.currentTarget.style.color = 'var(--text-muted)'
+                }
+              }}
+              title={temporaryChat ? 'Temporary chat is ON — messages won\'t be saved' : 'Enable temporary chat'}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+                {temporaryChat && <line x1="9" y1="8" x2="15" y2="14" />}
+                {temporaryChat && <line x1="15" y1="8" x2="9" y2="14" />}
+              </svg>
+              {temporaryChat && 'Temporary'}
+            </button>
+          )}
+          {temporaryChat && conversationId === null && (
+            <span className="text-[11px] px-2 py-0.5 rounded-md font-medium" style={{ background: 'rgba(234, 179, 8, 0.1)', color: '#eab308' }}>
+              Not saved
+            </span>
+          )}
+          {!temporaryChat && (
+            <span className="text-[11px] px-2 py-0.5 rounded-md font-medium" style={{ background: 'var(--accent-subtle)', color: 'var(--accent)' }}>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="inline-block mr-0.5 -mt-px">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                <path d="M7 11V7a5 5 0 0110 0v4" />
+              </svg>
+              Encrypted
+            </span>
+          )}
         </div>
       </header>
 
@@ -424,9 +473,15 @@ export function ChatView({
         {!loadingMessages && messages.length === 0 && !streaming && (
           <div className="flex items-center justify-center h-full">
             <div className="text-center max-w-2xl px-6">
-              <h2 className="text-2xl font-semibold mb-8" style={{ color: 'var(--text-primary)' }}>
+              <h2 className="text-2xl font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
                 What can I help with?
               </h2>
+              {temporaryChat && (
+                <p className="text-xs mb-6" style={{ color: '#eab308' }}>
+                  Temporary chat — this conversation won&apos;t be saved
+                </p>
+              )}
+              {!temporaryChat && <div className="mb-8" />}
 
               <div className="grid grid-cols-2 gap-2.5">
                 {SUGGESTIONS.map((s) => (
