@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { createHash } from 'crypto'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET() {
   const code = process.env.STEALTH_CODE
   if (!code) {
