@@ -1,0 +1,16 @@
+services:
+  web:
+    build: .
+    container_name: vaultchat_web
+    restart: unless-stopped
+    ports:
+      - "3100:3000"
+    env_file:
+      - .env
+    volumes:
+      - vaultchat_data:/app/prisma
+    environment:
+      - DATABASE_URL=file:/app/prisma/prod.db
+
+volumes:
+  vaultchat_data:

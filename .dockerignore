@@ -1,12 +1,6 @@
 node_modules
 .next
-.git
 .env
-.env.*
-!.env.example
-*.log
-README.md
-docs
-infra
-Dockerfile
-.dockerignore
+*.db
+.git
+TECHNICAL.md
