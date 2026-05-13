@@ -146,7 +146,7 @@ export function ChatSidebar({
       const pubKeyDer = Uint8Array.from(atob(pubKeyB64), c => c.charCodeAt(0))
       const pubKey = await crypto.subtle.importKey('spki', pubKeyDer, { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['encrypt'])
       const sealedKey = await crypto.subtle.encrypt({ name: 'RSA-OAEP' }, pubKey, aesKeyRaw)
-      const sealedKeyB64 = btoa(String.fromCharCode(...new Uint8Array(sealedKey)))
+      const sealedKeyB64 = btoa(String.fromCharCode(...Array.from(new Uint8Array(sealedKey))))
 
       const iv = crypto.getRandomValues(new Uint8Array(12))
       const importedKey = await crypto.subtle.importKey('raw', aesKeyRaw, 'AES-GCM', false, ['encrypt'])
@@ -158,7 +158,7 @@ export function ChatSidebar({
       out.set(iv)
       out.set(tag, 12)
       out.set(cipherOnly, 28)
-      const titleEnc = btoa(String.fromCharCode(...out))
+      const titleEnc = btoa(String.fromCharCode(...Array.from(out)))
 
       await fetch(`/api/conversations/${renamingId}`, {
         method: 'PATCH',
