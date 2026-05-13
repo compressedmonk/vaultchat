@@ -1,0 +1,149 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-primary: #0a0a0a;
+  --bg-secondary: #141414;
+  --bg-tertiary: #1a1a1a;
+  --bg-hover: #222222;
+  --bg-active: #2a2a2a;
+  --border: #2a2a2a;
+  --border-subtle: #1f1f1f;
+  --text-primary: #e5e5e5;
+  --text-secondary: #999999;
+  --text-muted: #666666;
+  --accent: #7c6ef0;
+  --accent-hover: #6b5de0;
+  --accent-subtle: rgba(124, 110, 240, 0.12);
+  --danger: #ef4444;
+  --success: #22c55e;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+body {
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: var(--accent-subtle);
+  color: var(--text-primary);
+}
+
+.vault-input {
+  @apply w-full rounded-lg border px-3 py-2.5 text-sm transition-all;
+  background: var(--bg-tertiary);
+  border-color: var(--border);
+  color: var(--text-primary);
+  outline: none;
+}
+.vault-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-subtle);
+}
+.vault-input::placeholder {
+  color: var(--text-muted);
+}
+
+.vault-btn-primary {
+  @apply rounded-lg px-5 py-2.5 text-sm font-medium text-white disabled:opacity-40 transition-all;
+  background: var(--accent);
+}
+.vault-btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+.vault-btn-primary:focus-visible {
+  @apply outline-none;
+  box-shadow: 0 0 0 3px var(--accent-subtle);
+}
+
+.vault-btn-ghost {
+  @apply rounded-lg px-3 py-2 text-sm transition-all;
+  color: var(--text-secondary);
+  background: transparent;
+}
+.vault-btn-ghost:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.vault-card {
+  @apply rounded-xl p-6;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+}
+
+.prose-chat {
+  @apply leading-relaxed;
+  color: var(--text-primary);
+}
+.prose-chat p {
+  @apply mb-3 last:mb-0;
+}
+.prose-chat pre {
+  @apply rounded-lg p-4 my-3 overflow-x-auto text-sm;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+}
+.prose-chat code:not(pre code) {
+  @apply px-1.5 py-0.5 rounded text-sm;
+  background: var(--bg-tertiary);
+  color: #c4b5fd;
+}
+.prose-chat ul, .prose-chat ol {
+  @apply pl-6 mb-3;
+}
+.prose-chat ul {
+  @apply list-disc;
+}
+.prose-chat ol {
+  @apply list-decimal;
+}
+.prose-chat li {
+  @apply mb-1;
+}
+.prose-chat h1, .prose-chat h2, .prose-chat h3 {
+  @apply font-semibold mb-2 mt-4 first:mt-0;
+  color: var(--text-primary);
+}
+.prose-chat h1 { @apply text-xl; }
+.prose-chat h2 { @apply text-lg; }
+.prose-chat h3 { @apply text-base; }
+.prose-chat a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.prose-chat blockquote {
+  @apply pl-4 my-3 italic;
+  border-left: 3px solid var(--border);
+  color: var(--text-secondary);
+}
+.prose-chat table {
+  @apply w-full my-3 text-sm;
+  border-collapse: collapse;
+}
+.prose-chat th, .prose-chat td {
+  @apply px-3 py-2 text-left;
+  border: 1px solid var(--border);
+}
+.prose-chat th {
+  background: var(--bg-tertiary);
+  font-weight: 600;
+}
