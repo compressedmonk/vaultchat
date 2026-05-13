@@ -8,6 +8,7 @@ import {
 } from '@/lib/crypto/client-crypto'
 import { ChatMessage } from './ChatMessage'
 import { ChatInput } from './ChatInput'
+import type { StealthConfig } from './page'
 
 const AVAILABLE_MODELS = [
   { id: 'gpt-5.5', label: 'GPT-5.5' },
@@ -24,10 +25,10 @@ const DEFAULT_MODEL = 'gpt-5.5'
 const MODEL_STORAGE_KEY = 'vaultchat_model'
 
 const SUGGESTIONS = [
-  { icon: '💡', text: 'Explain a concept', prompt: 'Explain quantum computing in simple terms' },
-  { icon: '✍️', text: 'Help me write', prompt: 'Help me write a professional email' },
-  { icon: '🔍', text: 'Analyze something', prompt: 'Analyze the pros and cons of remote work' },
-  { icon: '💻', text: 'Write code', prompt: 'Write a Python function that sorts a list of dictionaries by a key' },
+  { text: 'Explain a concept', prompt: 'Explain quantum computing in simple terms' },
+  { text: 'Help me write', prompt: 'Help me write a professional email' },
+  { text: 'Analyze something', prompt: 'Analyze the pros and cons of remote work' },
+  { text: 'Write code', prompt: 'Write a Python function that sorts a list of dictionaries by a key' },
 ]
 
 function getStoredModel(): string {
@@ -42,19 +43,6 @@ interface Message {
   createdAt?: string
 }
 
-function formatTime(dateStr?: string): string {
-  if (!dateStr) return ''
-  const date = new Date(dateStr)
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffMin = Math.floor(diffMs / 60000)
-  if (diffMin < 1) return 'just now'
-  if (diffMin < 60) return `${diffMin}m ago`
-  const diffHr = Math.floor(diffMin / 60)
-  if (diffHr < 24) return `${diffHr}h ago`
-  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-}
-
 interface Props {
   conversationId: string | null
   onConversationCreated: (id: string) => void
@@ -62,6 +50,9 @@ interface Props {
   onToggleSidebar: () => void
   onNewChat: () => void
   sidebarOpen: boolean
+  stealthUnlocked: boolean
+  stealthConfig: StealthConfig | null
+  onStealthUnlock: () => void
 }
 
 async function decryptMessage(
@@ -84,6 +75,9 @@ export function ChatView({
   onToggleSidebar,
   onNewChat,
   sidebarOpen,
+  stealthUnlocked,
+  stealthConfig,
+  onStealthUnlock,
 }: Props) {
   const { privateKey } = useVaultUnlock()
   const [messages, setMessages] = useState<Message[]>([])
@@ -93,7 +87,6 @@ export function ChatView({
   const [modelOpen, setModelOpen] = useState(false)
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [showScrollDown, setShowScrollDown] = useState(false)
-  const [lastUserMessage, setLastUserMessage] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
   const modelDropdownRef = useRef<HTMLDivElement>(null)
@@ -195,7 +188,6 @@ export function ChatView({
       if (!isRegenerate) {
         const userMsg: Message = { id: `tmp-${Date.now()}`, role: 'user', content }
         setMessages((prev) => [...prev, userMsg])
-        setLastUserMessage(content)
       }
       setStreaming(true)
       setStreamContent('')
@@ -217,6 +209,7 @@ export function ChatView({
             message: content,
             history,
             model: selectedModel,
+            isDecoy: stealthConfig?.enabled ? !stealthUnlocked : false,
           }),
           signal: controller.signal,
         })
@@ -301,7 +294,7 @@ export function ChatView({
         abortRef.current = null
       }
     },
-    [conversationId, streaming, onConversationCreated, onRefreshConversations, messages, selectedModel]
+    [conversationId, streaming, onConversationCreated, onRefreshConversations, messages, selectedModel, stealthConfig, stealthUnlocked]
   )
 
   const handleSend = useCallback((content: string) => doSend(content, false), [doSend])
@@ -328,63 +321,64 @@ export function ChatView({
 
   return (
     <>
-      <header
-        className="flex items-center gap-3 px-4 h-12 shrink-0 border-b"
-        style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border)' }}
-      >
+      <header className="flex items-center gap-3 px-4 h-12 shrink-0" style={{ background: 'transparent' }}>
         {!sidebarOpen && (
-          <div className="flex items-center gap-1">
-            <button onClick={onToggleSidebar} className="vault-btn-ghost p-1.5" title="Open sidebar (Ctrl+Shift+S)">
+          <div className="flex items-center gap-0.5">
+            <button
+              onClick={onToggleSidebar}
+              className="p-2 rounded-lg transition-colors"
+              style={{ color: 'var(--text-secondary)' }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+              title="Open sidebar"
+            >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="3" width="18" height="18" rx="2" />
                 <line x1="9" y1="3" x2="9" y2="21" />
               </svg>
             </button>
-            <button onClick={onNewChat} className="vault-btn-ghost p-1.5" title="New chat (Ctrl+Shift+O)">
+            <button
+              onClick={onNewChat}
+              className="p-2 rounded-lg transition-colors"
+              style={{ color: 'var(--text-secondary)' }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+              title="New chat"
+            >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
+                <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
               </svg>
             </button>
           </div>
         )}
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-            VaultChat
-          </span>
-          <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--accent-subtle)', color: 'var(--accent)' }}>
-            encrypted
-          </span>
-        </div>
 
-        <div className="ml-auto relative" ref={modelDropdownRef}>
+        <div className="relative" ref={modelDropdownRef}>
           <button
             onClick={() => setModelOpen(!modelOpen)}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors"
-            style={{
-              background: 'var(--bg-tertiary)',
-              color: 'var(--text-secondary)',
-              border: '1px solid var(--border)',
-            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+            style={{ color: 'var(--text-primary)' }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
           >
             {currentModelLabel}
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="6 9 12 15 18 9" />
             </svg>
           </button>
 
           {modelOpen && (
             <div
-              className="absolute right-0 top-full mt-1 w-44 rounded-lg shadow-lg border overflow-hidden z-50"
-              style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border)' }}
+              className="absolute left-0 top-full mt-1 w-48 rounded-xl shadow-xl overflow-hidden z-50 py-1"
+              style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-light)' }}
             >
               {AVAILABLE_MODELS.map((m) => (
                 <button
                   key={m.id}
                   onClick={() => handleModelChange(m.id)}
-                  className="w-full text-left px-3 py-2 text-xs transition-colors flex items-center justify-between"
+                  className="w-full text-left px-3 py-2 text-sm transition-colors flex items-center justify-between"
                   style={{
-                    color: selectedModel === m.id ? 'var(--accent)' : 'var(--text-secondary)',
+                    color: selectedModel === m.id ? 'var(--text-primary)' : 'var(--text-secondary)',
                     background: selectedModel === m.id ? 'var(--accent-subtle)' : 'transparent',
                   }}
                   onMouseEnter={(e) => {
@@ -396,7 +390,7 @@ export function ChatView({
                 >
                   {m.label}
                   {selectedModel === m.id && (
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                       <polyline points="20 6 9 17 4 12" />
                     </svg>
                   )}
@@ -405,12 +399,22 @@ export function ChatView({
             </div>
           )}
         </div>
+
+        <div className="ml-auto flex items-center gap-2">
+          <span className="text-[11px] px-2 py-0.5 rounded-md font-medium" style={{ background: 'var(--accent-subtle)', color: 'var(--accent)' }}>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="inline-block mr-0.5 -mt-px">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+              <path d="M7 11V7a5 5 0 0110 0v4" />
+            </svg>
+            Encrypted
+          </span>
+        </div>
       </header>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto relative">
         {loadingMessages && (
           <div className="flex items-center justify-center h-full">
-            <div className="flex items-center gap-2" style={{ color: 'var(--text-muted)' }}>
+            <div className="flex items-center gap-2 text-sm" style={{ color: 'var(--text-muted)' }}>
               <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
               Decrypting messages...
             </div>
@@ -419,36 +423,32 @@ export function ChatView({
 
         {!loadingMessages && messages.length === 0 && !streaming && (
           <div className="flex items-center justify-center h-full">
-            <div className="text-center max-w-lg px-6">
-              <div className="w-14 h-14 mx-auto mb-4 rounded-2xl flex items-center justify-center" style={{ background: 'var(--accent-subtle)' }}>
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--accent)' }}>
-                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                  <path d="M7 11V7a5 5 0 0110 0v4" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-medium mb-1" style={{ color: 'var(--text-primary)' }}>
-                How can I help?
-              </h3>
-              <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>
-                End-to-end encrypted. Only you can read your conversations.
-              </p>
+            <div className="text-center max-w-2xl px-6">
+              <h2 className="text-2xl font-semibold mb-8" style={{ color: 'var(--text-primary)' }}>
+                What can I help with?
+              </h2>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-2.5">
                 {SUGGESTIONS.map((s) => (
                   <button
                     key={s.prompt}
                     onClick={() => handleSend(s.prompt)}
-                    className="text-left p-3 rounded-xl text-sm transition-colors"
+                    className="text-left px-4 py-3 rounded-xl text-sm transition-colors"
                     style={{
-                      background: 'var(--bg-tertiary)',
-                      border: '1px solid var(--border)',
+                      background: 'transparent',
+                      border: '1px solid var(--border-light)',
                       color: 'var(--text-secondary)',
                     }}
-                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--text-primary)' }}
-                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-secondary)' }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = 'var(--bg-tertiary)'
+                      e.currentTarget.style.color = 'var(--text-primary)'
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'transparent'
+                      e.currentTarget.style.color = 'var(--text-secondary)'
+                    }}
                   >
-                    <span className="text-base mb-1 block">{s.icon}</span>
-                    <span className="text-xs">{s.text}</span>
+                    {s.text}
                   </button>
                 ))}
               </div>
@@ -459,17 +459,12 @@ export function ChatView({
         {!loadingMessages && (
           <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
             {messages.map((m, idx) => (
-              <div key={m.id}>
+              <div key={m.id} className="group">
                 <ChatMessage
                   role={m.role}
                   content={m.content}
                   onEdit={m.role === 'user' && !streaming ? (newContent) => handleEditMessage(idx, newContent) : undefined}
                 />
-                {m.createdAt && (
-                  <div className={`text-[10px] mt-1 ${m.role === 'user' ? 'text-right pr-10' : 'pl-10'}`} style={{ color: 'var(--text-muted)' }}>
-                    {formatTime(m.createdAt)}
-                  </div>
-                )}
               </div>
             ))}
 
@@ -478,10 +473,10 @@ export function ChatView({
             )}
 
             {streaming && !streamContent && (
-              <div className="flex items-center gap-1.5 px-4 py-3">
-                <div className="w-1.5 h-1.5 rounded-full animate-pulse-dot" style={{ background: 'var(--accent)', animationDelay: '0ms' }} />
-                <div className="w-1.5 h-1.5 rounded-full animate-pulse-dot" style={{ background: 'var(--accent)', animationDelay: '200ms' }} />
-                <div className="w-1.5 h-1.5 rounded-full animate-pulse-dot" style={{ background: 'var(--accent)', animationDelay: '400ms' }} />
+              <div className="flex items-center gap-1.5 py-3">
+                <div className="w-1.5 h-1.5 rounded-full animate-pulse-dot" style={{ background: 'var(--text-muted)', animationDelay: '0ms' }} />
+                <div className="w-1.5 h-1.5 rounded-full animate-pulse-dot" style={{ background: 'var(--text-muted)', animationDelay: '200ms' }} />
+                <div className="w-1.5 h-1.5 rounded-full animate-pulse-dot" style={{ background: 'var(--text-muted)', animationDelay: '400ms' }} />
               </div>
             )}
 
@@ -489,10 +484,10 @@ export function ChatView({
               <div className="flex justify-center">
                 <button
                   onClick={handleRegenerate}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors"
-                  style={{ color: 'var(--text-muted)', border: '1px solid var(--border)' }}
-                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--text-primary)' }}
-                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-muted)' }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs transition-colors"
+                  style={{ color: 'var(--text-muted)', border: '1px solid var(--border-light)' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-tertiary)'; e.currentTarget.style.color = 'var(--text-primary)' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)' }}
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="1 4 1 10 7 10" />
@@ -510,8 +505,7 @@ export function ChatView({
             onClick={scrollToBottom}
             className="absolute bottom-4 left-1/2 -translate-x-1/2 w-8 h-8 rounded-full flex items-center justify-center shadow-lg transition-all z-10"
             style={{
-              background: 'var(--bg-secondary)',
-              border: '1px solid var(--border)',
+              background: 'var(--message-surface)',
               color: 'var(--text-secondary)',
             }}
           >
@@ -527,6 +521,8 @@ export function ChatView({
         onStop={handleStop}
         disabled={false}
         streaming={streaming}
+        stealthConfig={stealthConfig}
+        onStealthUnlock={onStealthUnlock}
       />
     </>
   )

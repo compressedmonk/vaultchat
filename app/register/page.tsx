@@ -187,7 +187,7 @@ export default function RegisterPage() {
 
           <div
             className="rounded-lg p-3"
-            style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)' }}
+            style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-light)' }}
           >
             <p className="text-xs font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>
               Encryption password

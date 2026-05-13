@@ -49,6 +49,7 @@ model Conversation {
   titleEnc     String?  @map("title_enc")
   sealedKeyB64 String   @map("sealed_key_b64")
   model        String   @default("gpt-5.5")
+  isDecoy      Boolean  @default(false) @map("is_decoy")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 

@@ -14,6 +14,8 @@ interface Props {
   onRefreshConversations: () => void
   open: boolean
   onToggle: () => void
+  stealthUnlocked: boolean
+  onStealthHide: () => void
 }
 
 function DecryptedTitle({ conv, onDecrypted }: { conv: ConversationStub; onDecrypted?: (title: string) => void }) {
@@ -87,6 +89,8 @@ export function ChatSidebar({
   onRefreshConversations,
   open,
   onToggle,
+  stealthUnlocked,
+  onStealthHide,
 }: Props) {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const [renamingId, setRenamingId] = useState<string | null>(null)
@@ -186,48 +190,70 @@ export function ChatSidebar({
         className={`
           ${open ? 'translate-x-0' : '-translate-x-full'}
           fixed md:relative md:translate-x-0
-          z-40 flex flex-col h-full w-64 shrink-0
+          z-40 flex flex-col h-full w-[260px] shrink-0
           transition-transform duration-200
-          border-r
         `}
-        style={{
-          background: 'var(--bg-secondary)',
-          borderColor: 'var(--border)',
-        }}
+        style={{ background: 'var(--bg-secondary)' }}
       >
-        <div className="p-3 border-b flex items-center gap-2" style={{ borderColor: 'var(--border)' }}>
-          <button
-            onClick={onNewChat}
-            className="vault-btn-primary flex-1 flex items-center justify-center gap-2 text-sm"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-            New chat
-          </button>
+        <div className="p-2 flex items-center gap-2">
           <button
             onClick={onToggle}
-            className="vault-btn-ghost p-2 shrink-0 hidden md:flex items-center justify-center"
+            className="p-2 rounded-lg transition-colors hidden md:flex items-center justify-center"
+            style={{ color: 'var(--text-secondary)' }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
             title="Close sidebar"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="3" y="3" width="18" height="18" rx="2" />
               <line x1="9" y1="3" x2="9" y2="21" />
             </svg>
           </button>
+          <div className="flex-1" />
+          <button
+            onClick={onNewChat}
+            className="p-2 rounded-lg transition-colors flex items-center justify-center"
+            style={{ color: 'var(--text-secondary)' }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+            title="New chat"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+              <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+            </svg>
+          </button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto py-1">
+        {stealthUnlocked && (
+          <div className="px-2 pb-1">
+            <button
+              onClick={onStealthHide}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold transition-colors"
+              style={{ background: '#dc2626', color: '#ffffff' }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = '#b91c1c' }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = '#dc2626' }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94" />
+                <path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19" />
+                <line x1="1" y1="1" x2="23" y2="23" />
+              </svg>
+              HIDE
+            </button>
+          </div>
+        )}
+
+        <nav className="flex-1 overflow-y-auto px-1.5 py-1">
           {conversations.length === 0 && (
             <p className="text-xs text-center py-8" style={{ color: 'var(--text-muted)' }}>
               No conversations yet
             </p>
           )}
           {groups.map((group) => (
-            <div key={group.label}>
+            <div key={group.label} className="mb-1">
               <div
-                className="px-4 pt-3 pb-1 text-[11px] font-medium uppercase tracking-wider"
+                className="px-3 pt-3 pb-1.5 text-[11px] font-semibold tracking-wider"
                 style={{ color: 'var(--text-muted)' }}
               >
                 {group.label}
@@ -235,14 +261,14 @@ export function ChatSidebar({
               {group.items.map((c) => (
                 <div
                   key={c.id}
-                  className="group flex items-center gap-2 px-3 py-2 mx-1.5 rounded-lg cursor-pointer text-sm transition-colors"
+                  className="group flex items-center gap-1.5 px-2.5 py-2 rounded-lg cursor-pointer text-[13px] transition-colors relative"
                   style={{
-                    background: activeId === c.id ? 'var(--bg-active)' : 'transparent',
-                    color: activeId === c.id ? 'var(--text-primary)' : 'var(--text-secondary)',
+                    background: activeId === c.id ? 'var(--bg-primary)' : 'transparent',
+                    color: 'var(--text-primary)',
                   }}
                   onClick={() => onSelect(c.id)}
                   onMouseEnter={(e) => {
-                    if (activeId !== c.id) e.currentTarget.style.background = 'var(--bg-hover)'
+                    if (activeId !== c.id) e.currentTarget.style.background = 'var(--bg-primary)'
                   }}
                   onMouseLeave={(e) => {
                     if (activeId !== c.id) e.currentTarget.style.background = 'transparent'
@@ -256,7 +282,7 @@ export function ChatSidebar({
                       onKeyDown={handleRenameKeyDown}
                       onBlur={handleRenameSave}
                       onClick={(e) => e.stopPropagation()}
-                      className="flex-1 bg-transparent outline-none text-sm px-0 py-0"
+                      className="flex-1 bg-transparent outline-none text-[13px] px-0 py-0"
                       style={{ color: 'var(--text-primary)' }}
                     />
                   ) : (
@@ -273,7 +299,7 @@ export function ChatSidebar({
                   )}
 
                   {deleteConfirmId === c.id ? (
-                    <div className="flex items-center gap-1 shrink-0">
+                    <div className="flex items-center gap-0.5 shrink-0">
                       <button
                         onClick={(e) => handleDeleteConfirm(e, c.id)}
                         className="p-1 rounded transition-colors"
@@ -299,7 +325,7 @@ export function ChatSidebar({
                   ) : (
                     <button
                       onClick={(e) => handleDeleteClick(e, c.id)}
-                      className="opacity-0 group-hover:opacity-100 p-1 rounded transition-opacity shrink-0"
+                      className="opacity-0 group-hover:opacity-100 p-1 rounded transition-all shrink-0"
                       style={{ color: 'var(--text-muted)' }}
                       title="Delete"
                     >
@@ -315,10 +341,19 @@ export function ChatSidebar({
           ))}
         </nav>
 
-        <div className="p-3 border-t" style={{ borderColor: 'var(--border)' }}>
+        <div className="p-2">
           <button
             onClick={handleLogout}
-            className="vault-btn-ghost w-full flex items-center gap-2 text-sm"
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[13px] transition-colors"
+            style={{ color: 'var(--text-muted)' }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--bg-hover)'
+              e.currentTarget.style.color = 'var(--text-primary)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent'
+              e.currentTarget.style.color = 'var(--text-muted)'
+            }}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />

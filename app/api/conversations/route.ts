@@ -15,6 +15,7 @@ export async function GET() {
       titleEnc: true,
       sealedKeyB64: true,
       model: true,
+      isDecoy: true,
       updatedAt: true,
     },
     orderBy: { updatedAt: 'desc' },
@@ -38,11 +39,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Missing sealedKeyB64' }, { status: 400 })
   }
 
+  const isDecoy = body.isDecoy === true
+
   const conversation = await prisma.conversation.create({
     data: {
       userId,
       sealedKeyB64,
       model,
+      isDecoy,
     },
   })
 

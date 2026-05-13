@@ -3,21 +3,24 @@
 @tailwind utilities;
 
 :root {
-  --bg-primary: #0a0a0a;
-  --bg-secondary: #141414;
-  --bg-tertiary: #1a1a1a;
-  --bg-hover: #222222;
-  --bg-active: #2a2a2a;
-  --border: #2a2a2a;
-  --border-subtle: #1f1f1f;
-  --text-primary: #e5e5e5;
-  --text-secondary: #999999;
-  --text-muted: #666666;
-  --accent: #7c6ef0;
-  --accent-hover: #6b5de0;
-  --accent-subtle: rgba(124, 110, 240, 0.12);
+  --bg-primary: #212121;
+  --bg-secondary: #171717;
+  --bg-tertiary: #2f2f2f;
+  --bg-hover: #2f2f2f;
+  --bg-active: #343541;
+  --border: transparent;
+  --border-subtle: #2f2f2f;
+  --border-light: #3e3e3e;
+  --text-primary: #ececec;
+  --text-secondary: #b4b4b4;
+  --text-muted: #8e8ea0;
+  --accent: #10a37f;
+  --accent-hover: #0d8a6a;
+  --accent-subtle: rgba(16, 163, 127, 0.12);
   --danger: #ef4444;
-  --success: #22c55e;
+  --success: #10a37f;
+  --message-surface: #303030;
+  --composer-surface: #2f2f2f;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -30,13 +33,13 @@
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
+  scrollbar-color: #424242 transparent;
 }
 
 body {
   color: var(--text-primary);
   background: var(--bg-primary);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Söhne', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -47,22 +50,22 @@ body {
 }
 
 .vault-input {
-  @apply w-full rounded-lg border px-3 py-2.5 text-sm transition-all;
+  @apply w-full rounded-xl px-3 py-2.5 text-sm transition-all;
   background: var(--bg-tertiary);
-  border-color: var(--border);
+  border: 1px solid var(--border-light);
   color: var(--text-primary);
   outline: none;
 }
 .vault-input:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-subtle);
+  box-shadow: 0 0 0 2px var(--accent-subtle);
 }
 .vault-input::placeholder {
   color: var(--text-muted);
 }
 
 .vault-btn-primary {
-  @apply rounded-lg px-5 py-2.5 text-sm font-medium text-white disabled:opacity-40 transition-all;
+  @apply rounded-xl px-5 py-2.5 text-sm font-medium text-white disabled:opacity-40 transition-all;
   background: var(--accent);
 }
 .vault-btn-primary:hover:not(:disabled) {
@@ -70,7 +73,7 @@ body {
 }
 .vault-btn-primary:focus-visible {
   @apply outline-none;
-  box-shadow: 0 0 0 3px var(--accent-subtle);
+  box-shadow: 0 0 0 2px var(--accent-subtle);
 }
 
 .vault-btn-ghost {
@@ -84,27 +87,27 @@ body {
 }
 
 .vault-card {
-  @apply rounded-xl p-6;
+  @apply rounded-2xl p-6;
   background: var(--bg-secondary);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-light);
 }
 
 .prose-chat {
   @apply leading-relaxed;
   color: var(--text-primary);
+  font-size: 0.9375rem;
 }
 .prose-chat p {
   @apply mb-3 last:mb-0;
 }
 .prose-chat pre {
-  @apply rounded-lg p-4 my-3 overflow-x-auto text-sm;
-  background: var(--bg-primary);
-  border: 1px solid var(--border);
+  @apply rounded-xl p-4 my-3 overflow-x-auto text-sm;
+  background: #0d0d0d;
 }
 .prose-chat code:not(pre code) {
-  @apply px-1.5 py-0.5 rounded text-sm;
-  background: var(--bg-tertiary);
-  color: #c4b5fd;
+  @apply px-1.5 py-0.5 rounded text-sm font-medium;
+  background: var(--message-surface);
+  color: #c9d1d9;
 }
 .prose-chat ul, .prose-chat ol {
   @apply pl-6 mb-3;
@@ -132,7 +135,7 @@ body {
 }
 .prose-chat blockquote {
   @apply pl-4 my-3 italic;
-  border-left: 3px solid var(--border);
+  border-left: 3px solid var(--border-subtle);
   color: var(--text-secondary);
 }
 .prose-chat table {
@@ -141,9 +144,9 @@ body {
 }
 .prose-chat th, .prose-chat td {
   @apply px-3 py-2 text-left;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-subtle);
 }
 .prose-chat th {
-  background: var(--bg-tertiary);
+  background: var(--message-surface);
   font-weight: 600;
 }

@@ -10,6 +10,17 @@ const CHAT_RATE_LIMIT = 30
 const CHAT_RATE_WINDOW_MS = 60 * 1000
 const DEFAULT_MODEL = 'gpt-5.5'
 
+const SYSTEM_PROMPT = `You are concise by default. Answer in 2-5 sentences unless the user explicitly asks for detail. No long explanations, no summaries, no extra suggestions.
+
+- Be direct. Answer, then stop.
+- Match the user's tone. Casual → casual. Technical → precise.
+- Never open with "Certainly!", "Of course!", "Great question!" or similar filler.
+- No disclaimers, no sign-offs, no "Let me know if you have questions".
+- Don't repeat what the user said. Don't over-format simple replies.
+- Use markdown and code blocks only when showing code or when structure genuinely helps.
+- Confident, warm, efficient. Say what you think. If you don't know, say so.
+- Only become detailed when the user asks for depth or the topic requires it.`
+
 function getOpenAI(): OpenAI {
   const key = process.env.OPENAI_API_KEY
   if (!key) throw new Error('No OpenAI API key configured')
@@ -77,6 +88,7 @@ export async function POST(request: NextRequest) {
   let conversationId: string | null = body.conversationId ?? null
   const history: { role: string; content: string }[] = body.history ?? []
   const requestModel: string = body.model ?? DEFAULT_MODEL
+  const isDecoy: boolean = body.isDecoy === true
 
   if (!userMessage.trim()) {
     return NextResponse.json({ error: 'Empty message' }, { status: 400 })
@@ -102,6 +114,7 @@ export async function POST(request: NextRequest) {
         userId,
         sealedKeyB64: titleSealedKeyB64,
         model: requestModel,
+        isDecoy,
       },
     })
     conversationId = created.id
@@ -126,7 +139,7 @@ export async function POST(request: NextRequest) {
   })
 
   const apiMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-    { role: 'system', content: 'You are a helpful assistant.' },
+    { role: 'system', content: SYSTEM_PROMPT },
   ]
 
   for (const h of history) {
