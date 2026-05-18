@@ -3,7 +3,7 @@ import { getSessionUserId } from '@/lib/session'
 import { prisma } from '@/lib/prisma'
 import { getOpenAI } from '@/lib/openai/client'
 import { checkRateLimit } from '@/lib/rate-limit'
-import { ALLOWED_MIME_TYPES, MAX_FILE_BYTES } from '@/lib/files'
+import { ALLOWED_MIME_TYPES, MAX_FILE_BYTES, resolveMimeType } from '@/lib/files'
 import { toFile } from 'openai'
 
 const UPLOAD_RATE_LIMIT = 10
@@ -26,19 +26,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid form data' }, { status: 400 })
   }
 
-  const file = formData.get('file')
-  if (!file || !(file instanceof File)) {
+  const entry = formData.get('file')
+  if (!entry || typeof entry === 'string' || !(entry instanceof Blob)) {
     return NextResponse.json({ error: 'No file provided' }, { status: 400 })
   }
 
-  if (file.size > MAX_FILE_BYTES) {
+  const blob = entry as Blob & { name?: string }
+  const filename =
+    typeof blob.name === 'string' && blob.name.length > 0 ? blob.name : 'upload'
+
+  if (blob.size > MAX_FILE_BYTES) {
     return NextResponse.json(
       { error: `File too large (max ${MAX_FILE_BYTES / 1024 / 1024} MB)` },
       { status: 400 }
     )
   }
 
-  const mimeType = file.type || 'application/octet-stream'
+  const mimeType = resolveMimeType(filename, blob.type)
   if (!ALLOWED_MIME_TYPES.has(mimeType)) {
     return NextResponse.json({ error: `File type not allowed: ${mimeType}` }, { status: 400 })
   }
@@ -56,18 +60,19 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const buffer = Buffer.from(await file.arrayBuffer())
+  const buffer = Buffer.from(await blob.arrayBuffer())
   const openai = getOpenAI()
 
   let openaiFileId: string
   try {
     const uploaded = await openai.files.create({
-      file: await toFile(buffer, file.name, { type: mimeType }),
+      file: await toFile(buffer, filename, { type: mimeType }),
       purpose: 'user_data',
     })
     openaiFileId = uploaded.id
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'OpenAI upload failed'
+    console.error('[files] OpenAI upload failed:', msg)
     return NextResponse.json({ error: msg }, { status: 502 })
   }
 
@@ -75,10 +80,10 @@ export async function POST(request: NextRequest) {
     data: {
       userId,
       conversationId: convId,
-      filename: file.name,
+      filename,
       openaiFileId,
       mimeType,
-      sizeBytes: file.size,
+      sizeBytes: blob.size,
     },
   })
 

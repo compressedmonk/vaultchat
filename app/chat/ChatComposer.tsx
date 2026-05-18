@@ -56,6 +56,7 @@ export function ChatComposer({
   const [attachments, setAttachments] = useState<PendingAttachment[]>([])
   const [webSearch, setWebSearch] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -151,21 +152,28 @@ export function ChatComposer({
     e.target.value = ''
 
     setUploading(true)
+    setUploadError(null)
     try {
       for (const file of Array.from(files)) {
         const err = validateUploadFile(file)
         if (err) {
-          alert(err)
+          setUploadError(err)
           continue
         }
 
         const form = new FormData()
-        form.append('file', file)
+        form.append('file', file, file.name)
 
-        const res = await fetch('/api/files', { method: 'POST', body: form })
+        const res = await fetch('/api/files', {
+          method: 'POST',
+          body: form,
+          credentials: 'same-origin',
+        })
         if (!res.ok) {
           const data = await res.json().catch(() => ({}))
-          alert(data.error ?? 'Upload failed')
+          setUploadError(
+            typeof data.error === 'string' ? data.error : `Upload failed (${res.status})`
+          )
           continue
         }
 
@@ -178,7 +186,10 @@ export function ChatComposer({
             mimeType: data.mimeType,
           },
         ])
+        setUploadError(null)
       }
+    } catch {
+      setUploadError('Upload failed. Check your connection and try again.')
     } finally {
       setUploading(false)
     }
@@ -355,6 +366,14 @@ export function ChatComposer({
             {uploading && (
               <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
                 Uploading…
+              </span>
+            )}
+            {uploadError && !uploading && (
+              <span
+                className="text-[11px] text-red-400 max-w-[min(100%,280px)] truncate"
+                title={uploadError}
+              >
+                {uploadError}
               </span>
             )}
           </div>
