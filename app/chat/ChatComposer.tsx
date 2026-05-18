@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useCallback, useEffect, type ChangeEvent } from 'react'
 import type { StealthConfig } from './page'
 import { getModel } from '@/lib/openai/models'
 import { validateUploadFile } from '@/lib/files'
@@ -58,7 +58,7 @@ export function ChatComposer({
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const fileInputDisabled = disabled || streaming || uploading
 
   const modelInfo = getModel(selectedModel)
   const searchSupported = modelInfo.supportsWebSearch
@@ -146,15 +146,13 @@ export function ChatComposer({
     })
   }, [searchSupported])
 
-  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (!files?.length) return
-    e.target.value = ''
+  const processSelectedFiles = useCallback(async (fileList: FileList | null) => {
+    if (!fileList?.length) return
 
     setUploading(true)
     setUploadError(null)
     try {
-      for (const file of Array.from(files)) {
+      for (const file of Array.from(fileList)) {
         const err = validateUploadFile(file)
         if (err) {
           setUploadError(err)
@@ -195,6 +193,18 @@ export function ChatComposer({
     }
   }, [])
 
+  const handleFileSelect = useCallback(
+    (e: ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files
+      void processSelectedFiles(files)
+      e.target.value = ''
+    },
+    [processSelectedFiles]
+  )
+
+  const fileInputOverlayClass =
+    'absolute inset-0 z-10 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed'
+
   const removeAttachment = useCallback((fileId: string) => {
     setAttachments((prev) => prev.filter((a) => a.fileId !== fileId))
     fetch(`/api/files/${fileId}`, { method: 'DELETE' }).catch(() => {})
@@ -206,6 +216,20 @@ export function ChatComposer({
   return (
     <div className="shrink-0 px-4 pb-4 pt-2">
       <div className="max-w-3xl mx-auto">
+        {(uploading || uploadError) && (
+          <div
+            className="mb-2 px-3 py-2 rounded-lg text-xs"
+            style={{
+              background: uploadError ? 'rgba(239, 68, 68, 0.12)' : 'var(--bg-tertiary)',
+              border: uploadError
+                ? '1px solid rgba(239, 68, 68, 0.35)'
+                : '1px solid var(--border-light)',
+              color: uploadError ? '#f87171' : 'var(--text-secondary)',
+            }}
+          >
+            {uploading ? 'Uploading file…' : uploadError}
+          </div>
+        )}
         {attachments.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-2">
             {attachments.map((a) => (
@@ -245,19 +269,10 @@ export function ChatComposer({
           style={{ background: 'var(--composer-surface)' }}
         >
           <div className="flex items-end gap-1">
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              className="hidden"
-              accept=".pdf,.txt,.md,.csv,.json,image/png,image/jpeg,image/webp,image/gif"
-              onChange={handleFileSelect}
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={disabled || streaming || uploading}
-              className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center transition-colors disabled:opacity-40 mb-0.5"
+            <label
+              className={`relative shrink-0 w-9 h-9 rounded-full flex items-center justify-center transition-colors mb-0.5 ${
+                fileInputDisabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+              }`}
               style={{
                 color: 'var(--text-primary)',
                 background: 'var(--bg-hover)',
@@ -266,11 +281,19 @@ export function ChatComposer({
               title="Attach files"
               aria-label="Attach files"
             >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <input
+                type="file"
+                multiple
+                disabled={fileInputDisabled}
+                className={fileInputOverlayClass}
+                onChange={handleFileSelect}
+                onInput={handleFileSelect}
+              />
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <line x1="12" y1="5" x2="12" y2="19" />
                 <line x1="5" y1="12" x2="19" y2="12" />
               </svg>
-            </button>
+            </label>
 
             <textarea
               ref={textareaRef}
@@ -315,11 +338,10 @@ export function ChatComposer({
           </div>
 
           <div className="flex items-center gap-2 px-1 pt-1 pb-0.5 flex-wrap">
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={disabled || streaming || uploading}
-              className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-all disabled:opacity-40"
+            <label
+              className={`relative flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-all ${
+                fileInputDisabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+              }`}
               style={{
                 background: attachments.length > 0 ? 'var(--accent-subtle)' : 'transparent',
                 color: attachments.length > 0 ? 'var(--accent)' : 'var(--text-muted)',
@@ -330,11 +352,19 @@ export function ChatComposer({
               }}
               title="Attach PDF, images, or text files"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <input
+                type="file"
+                multiple
+                disabled={fileInputDisabled}
+                className={fileInputOverlayClass}
+                onChange={handleFileSelect}
+                onInput={handleFileSelect}
+              />
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
               </svg>
               Attach
-            </button>
+            </label>
             <button
               type="button"
               onClick={toggleWebSearch}
@@ -363,19 +393,6 @@ export function ChatComposer({
               </svg>
               Search
             </button>
-            {uploading && (
-              <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                Uploading…
-              </span>
-            )}
-            {uploadError && !uploading && (
-              <span
-                className="text-[11px] text-red-400 max-w-[min(100%,280px)] truncate"
-                title={uploadError}
-              >
-                {uploadError}
-              </span>
-            )}
           </div>
         </div>
 

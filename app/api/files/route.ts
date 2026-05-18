@@ -10,6 +10,7 @@ const UPLOAD_RATE_LIMIT = 10
 const UPLOAD_RATE_WINDOW_MS = 60 * 1000
 
 export async function POST(request: NextRequest) {
+  console.info('[files] upload request received')
   const userId = await getSessionUserId()
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
