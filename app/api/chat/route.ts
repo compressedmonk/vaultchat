@@ -16,21 +16,11 @@ import {
 } from '@/lib/openai/responses'
 import { DEFAULT_MODEL, mapModel, resolveModelForWebSearch } from '@/lib/openai/models'
 import { schedulePurgeExpiredUploads } from '@/lib/file-retention'
+import { getSystemPrompt } from '@/lib/ai/personality'
 
 const CHAT_RATE_LIMIT = 30
 const CHAT_RATE_WINDOW_MS = 60 * 1000
 
-const SYSTEM_PROMPT = `You are concise by default. Answer in 2-5 sentences unless the user explicitly asks for detail. No long explanations, no summaries, no extra suggestions.
-
-- Be direct. Answer, then stop.
-- Match the user's tone. Casual → casual. Technical → precise.
-- Never open with "Certainly!", "Of course!", "Great question!" or similar filler.
-- No disclaimers, no sign-offs, no "Let me know if you have questions".
-- Don't repeat what the user said. Don't over-format simple replies.
-- Use markdown and code blocks only when showing code or when structure genuinely helps.
-- Confident, warm, efficient. Say what you think. If you don't know, say so.
-- Only become detailed when the user asks for depth or the topic requires it.
-- When using web search, cite sources inline with markdown links where relevant.`
 
 function sealMessage(publicKeySpkiB64: string, plaintext: string) {
   const aesKey = randomBytes(32)
@@ -208,7 +198,7 @@ export async function POST(request: NextRequest) {
 
   const openai = getOpenAI()
   const input = buildResponsesInput({
-    systemPrompt: SYSTEM_PROMPT,
+    systemPrompt: getSystemPrompt(),
     history,
     userMessage,
     attachments,
