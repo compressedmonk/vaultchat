@@ -77,16 +77,25 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: msg }, { status: 502 })
   }
 
-  const record = await prisma.uploadedFile.create({
-    data: {
-      userId,
-      conversationId: convId,
-      filename,
-      openaiFileId,
-      mimeType,
-      sizeBytes: blob.size,
-    },
-  })
+  let record
+  try {
+    record = await prisma.uploadedFile.create({
+      data: {
+        userId,
+        conversationId: convId,
+        filename,
+        openaiFileId,
+        mimeType,
+        sizeBytes: blob.size,
+      },
+    })
+  } catch (err) {
+    console.error('[files] database create failed:', err)
+    return NextResponse.json(
+      { error: 'Could not save file metadata. Try again in a moment.' },
+      { status: 500 }
+    )
+  }
 
   return NextResponse.json({
     fileId: record.id,
