@@ -7,6 +7,7 @@ const nextConfig = {
   // until we can rely on that boundary being recognized for all routes.
   experimental: {
     missingSuspenseWithCSRBailout: false,
+    instrumentationHook: true,
   },
 }
 

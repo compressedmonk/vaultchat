@@ -4,13 +4,15 @@ import { prisma } from '@/lib/prisma'
 import { getOpenAI } from '@/lib/openai/client'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { ALLOWED_MIME_TYPES, MAX_FILE_BYTES, resolveMimeType } from '@/lib/files'
+import { schedulePurgeExpiredUploads } from '@/lib/file-retention'
 import { toFile } from 'openai'
 
 const UPLOAD_RATE_LIMIT = 10
 const UPLOAD_RATE_WINDOW_MS = 60 * 1000
 
 export async function POST(request: NextRequest) {
-  console.info('[files] upload request received')
+  schedulePurgeExpiredUploads()
+
   const userId = await getSessionUserId()
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -90,6 +92,11 @@ export async function POST(request: NextRequest) {
       },
     })
   } catch (err) {
+    try {
+      await openai.files.del(openaiFileId)
+    } catch {
+      // best-effort rollback
+    }
     console.error('[files] database create failed:', err)
     return NextResponse.json(
       { error: 'Could not save file metadata. Try again in a moment.' },

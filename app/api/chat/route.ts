@@ -15,6 +15,7 @@ import {
   type Citation,
 } from '@/lib/openai/responses'
 import { DEFAULT_MODEL, mapModel, resolveModelForWebSearch } from '@/lib/openai/models'
+import { schedulePurgeExpiredUploads } from '@/lib/file-retention'
 
 const CHAT_RATE_LIMIT = 30
 const CHAT_RATE_WINDOW_MS = 60 * 1000
@@ -167,6 +168,8 @@ async function streamResponsesToClient(
 }
 
 export async function POST(request: NextRequest) {
+  schedulePurgeExpiredUploads()
+
   const userId = await getSessionUserId()
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

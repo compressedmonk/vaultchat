@@ -397,7 +397,7 @@ export function ChatComposer({
         </div>
 
         <p className="text-xs mt-2 text-center" style={{ color: 'var(--text-muted)' }}>
-          Messages are encrypted before storage. Files and prompts are sent to OpenAI during inference.
+          Messages are encrypted before storage. Attachments are sent to OpenAI during inference and deleted from our servers and OpenAI after 1 hour.
         </p>
       </div>
     </div>

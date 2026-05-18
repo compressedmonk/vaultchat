@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSessionUserId } from '@/lib/session'
 import { prisma } from '@/lib/prisma'
-import { getOpenAI } from '@/lib/openai/client'
+import { deleteUploadedFileRecord } from '@/lib/file-retention'
 
 export async function GET(
   _request: NextRequest,
@@ -46,15 +46,6 @@ export async function DELETE(
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
-  if (file.openaiFileId) {
-    try {
-      const openai = getOpenAI()
-      await openai.files.del(file.openaiFileId)
-    } catch {
-      // best-effort cleanup
-    }
-  }
-
-  await prisma.uploadedFile.delete({ where: { id } })
+  await deleteUploadedFileRecord(file)
   return NextResponse.json({ ok: true })
 }
