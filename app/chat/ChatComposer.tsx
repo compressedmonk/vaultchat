@@ -246,12 +246,18 @@ export function ChatComposer({
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={disabled || streaming || uploading}
-              className="shrink-0 p-2 rounded-lg transition-colors disabled:opacity-30"
-              style={{ color: 'var(--text-secondary)' }}
+              className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center transition-colors disabled:opacity-40 mb-0.5"
+              style={{
+                color: 'var(--text-primary)',
+                background: 'var(--bg-hover)',
+                border: '1px solid var(--border-light)',
+              }}
               title="Attach files"
+              aria-label="Attach files"
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
               </svg>
             </button>
 
@@ -297,7 +303,27 @@ export function ChatComposer({
             )}
           </div>
 
-          <div className="flex items-center gap-2 px-1 pt-1 pb-0.5">
+          <div className="flex items-center gap-2 px-1 pt-1 pb-0.5 flex-wrap">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={disabled || streaming || uploading}
+              className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-all disabled:opacity-40"
+              style={{
+                background: attachments.length > 0 ? 'var(--accent-subtle)' : 'transparent',
+                color: attachments.length > 0 ? 'var(--accent)' : 'var(--text-muted)',
+                border:
+                  attachments.length > 0
+                    ? '1px solid rgba(16, 163, 127, 0.35)'
+                    : '1px solid transparent',
+              }}
+              title="Attach PDF, images, or text files"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
+              </svg>
+              Attach
+            </button>
             <button
               type="button"
               onClick={toggleWebSearch}
