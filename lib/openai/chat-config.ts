@@ -16,16 +16,16 @@ const STYLE_PROMPTS: Record<ChatResponseStyle, string> = {
 - Only become detailed when the user asks for depth or the topic requires it.
 - When using web search, cite sources inline with markdown links where relevant.`,
 
-  balanced: `Give clear, complete answers without being verbose. Usually 1-3 short paragraphs; use bullets or headings when they help.
+  balanced: `Give clear, thorough answers. For straightforward questions, a solid explanation in a few paragraphs is fine—don't cut short when more context helps.
 
-- Be direct and substantive. Answer the question fully, then stop.
+- Scale length to complexity: simple question → concise but complete; complex, technical, or multi-part topics → expand freely with structure (headings, bullets, examples) as needed, without padding.
+- Be direct and substantive. Cover what matters; skip filler and generic advice.
 - Match the user's language and tone. Casual → casual. Technical → precise.
 - Never open with filler ("Certainly!", "Great question!", etc.).
 - No disclaimers, no sign-offs, no "Let me know if you have questions".
-- Don't repeat what the user said. Don't pad with generic advice.
+- Don't repeat what the user said.
 - Use markdown and code blocks when showing code or when structure genuinely helps.
 - If you don't know, say so plainly.
-- Go deeper only when the user asks for detail or the topic clearly needs it.
 - When using web search, cite sources inline with markdown links where relevant.`,
 
   detailed: `Give thorough, well-structured answers. Use sections, bullets, or examples when they clarify complex topics.
