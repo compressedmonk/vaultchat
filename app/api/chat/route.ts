@@ -16,7 +16,7 @@ import {
 } from '@/lib/openai/responses'
 import { DEFAULT_MODEL, mapModel, resolveModelForWebSearch } from '@/lib/openai/models'
 import { schedulePurgeExpiredUploads } from '@/lib/file-retention'
-import { getSystemPrompt } from '@/lib/ai/personality'
+import { getChatGenerationParams } from '@/lib/openai/chat-config'
 
 const CHAT_RATE_LIMIT = 30
 const CHAT_RATE_WINDOW_MS = 60 * 1000
@@ -197,12 +197,25 @@ export async function POST(request: NextRequest) {
     : undefined
 
   const openai = getOpenAI()
+  const generation = getChatGenerationParams(model)
   const input = buildResponsesInput({
-    systemPrompt: getSystemPrompt(),
+    systemPrompt: generation.systemPrompt,
     history,
     userMessage,
     attachments,
   })
+
+  const responseCreateParams = {
+    model,
+    input,
+    tools,
+    stream: true as const,
+    store: false as const,
+    temperature: generation.temperature,
+    max_output_tokens: generation.max_output_tokens,
+    ...(generation.top_p != null && { top_p: generation.top_p }),
+    ...(generation.reasoning && { reasoning: generation.reasoning }),
+  }
 
   if (!isTemporary) {
     const user = await prisma.user.findUnique({
@@ -264,13 +277,7 @@ export async function POST(request: NextRequest) {
 
     let stream: AsyncIterable<unknown>
     try {
-      stream = await openai.responses.create({
-        model,
-        input,
-        tools,
-        stream: true,
-        store: false,
-      })
+      stream = await openai.responses.create(responseCreateParams)
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'OpenAI error'
       return NextResponse.json({ error: msg }, { status: 502 })
@@ -321,13 +328,7 @@ export async function POST(request: NextRequest) {
   // Temporary chat: no DB writes
   let stream: AsyncIterable<unknown>
   try {
-    stream = await openai.responses.create({
-      model,
-      input,
-      tools,
-      stream: true,
-      store: false,
-    })
+    stream = await openai.responses.create(responseCreateParams)
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'OpenAI error'
     return NextResponse.json({ error: msg }, { status: 502 })

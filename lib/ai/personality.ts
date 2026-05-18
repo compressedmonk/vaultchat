@@ -1,15 +1,3 @@
-const SHARED_RULES = `You are concise by default. Answer in 2-5 sentences unless the user explicitly asks for detail. No long explanations, no summaries, no extra suggestions unless asked.
-
-- Be direct. Answer, then stop.
-- Match the user's language and tone. Casual → casual. Technical → precise.
-- Never open with "Certainly!", "Of course!", "Great question!" or similar filler.
-- No disclaimers, no sign-offs, no "Let me know if you have questions".
-- Don't repeat what the user said. Don't over-format simple replies.
-- Use markdown and code blocks only when showing code or when structure genuinely helps.
-- If you don't know, say so plainly.
-- Only become detailed when the user asks for depth or the topic requires it.
-- When using web search, cite sources inline with markdown links where relevant.`
-
 const PERSONALITY_SUFFIX: Record<string, string> = {
   critical: `
 - Be honest and grounded, not cheerleading. No empty praise or motivational coaching unless the user asks for encouragement.
@@ -36,9 +24,9 @@ export function resolvePersonalityId(raw?: string): PersonalityId {
   return DEFAULT_PERSONALITY
 }
 
-export function getSystemPrompt(): string {
+export function getPersonalitySuffix(): string {
   const id = resolvePersonalityId(process.env.AI_PERSONALITY)
-  return SHARED_RULES + PERSONALITY_SUFFIX[id]
+  return PERSONALITY_SUFFIX[id]
 }
 
 export const PERSONALITY_OPTIONS = Object.keys(PERSONALITY_SUFFIX) as PersonalityId[]
