@@ -3,6 +3,7 @@ import { z } from 'zod'
 import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/prisma'
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit'
+import { isRegistrationDisabled, REGISTRATION_CLOSED_MESSAGE } from '@/lib/registration'
 
 const registerSchema = z
   .object({
@@ -30,6 +31,10 @@ const registerSchema = z
 
 export async function POST(request: NextRequest) {
   try {
+    if (isRegistrationDisabled()) {
+      return NextResponse.json({ error: REGISTRATION_CLOSED_MESSAGE }, { status: 403 })
+    }
+
     const ip = getClientIp(request.headers)
     if (!checkRateLimit(`register:ip:${ip}`, 5, 15 * 60 * 1000)) {
       return NextResponse.json(

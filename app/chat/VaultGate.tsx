@@ -4,6 +4,7 @@ import { useEffect, useState, useRef, type ReactNode } from 'react'
 import { useVaultUnlock, type VaultUserForUnlock } from '@/app/components/security/VaultUnlockProvider'
 
 interface MeUser extends VaultUserForUnlock {
+  email: string
   encryptionPasswordMode: string
 }
 
@@ -17,8 +18,15 @@ export function VaultGate({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     fetch('/api/me')
-      .then((r) => r.json())
+      .then((r) => {
+        if (r.status === 401) {
+          window.location.href = '/login'
+          return null
+        }
+        return r.json()
+      })
       .then((d) => {
+        if (!d) return
         if (d.user) setMe(d.user)
         else setFetchError('Failed to load user data')
       })
@@ -82,6 +90,11 @@ export function VaultGate({ children }: { children: ReactNode }) {
     }
   }
 
+  async function handleSignOut() {
+    await fetch('/api/auth/logout', { method: 'POST' })
+    window.location.href = '/login'
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center px-4" style={{ background: 'var(--bg-primary)' }}>
       <div className="w-full max-w-sm">
@@ -100,6 +113,11 @@ export function VaultGate({ children }: { children: ReactNode }) {
               ? 'Enter your separate encryption password'
               : 'Enter your password to decrypt conversations'}
           </p>
+          {me.email && (
+            <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
+              Signed in as {me.email}
+            </p>
+          )}
         </div>
 
         <form onSubmit={handleUnlock} className="vault-card space-y-4">
@@ -126,6 +144,17 @@ export function VaultGate({ children }: { children: ReactNode }) {
             {loading ? 'Decrypting...' : 'Unlock'}
           </button>
         </form>
+
+        <p className="text-center text-sm mt-4">
+          <button
+            type="button"
+            onClick={handleSignOut}
+            className="font-medium"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            Sign out
+          </button>
+        </p>
       </div>
     </div>
   )

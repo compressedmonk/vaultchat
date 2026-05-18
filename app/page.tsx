@@ -1,10 +1,5 @@
 import { redirect } from 'next/navigation'
-import { getSessionUserId } from '@/lib/session'
 
-export default async function Home() {
-  const userId = await getSessionUserId()
-  if (userId) {
-    redirect('/chat')
-  }
+export default function Home() {
   redirect('/login')
 }

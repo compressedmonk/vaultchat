@@ -12,6 +12,7 @@ services:
       - vaultchat_data:/app/data
     environment:
       - DATABASE_URL=file:/app/data/prod.db
+      - REGISTRATION_DISABLED=true
 
 volumes:
   vaultchat_data:

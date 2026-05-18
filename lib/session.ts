@@ -1,9 +1,32 @@
 import { cookies } from 'next/headers'
 import { randomBytes, createHash } from 'crypto'
 import { prisma } from './prisma'
+import {
+  AUTH_INTENT_COOKIE_NAME,
+  LEGACY_SESSION_COOKIE_NAME,
+  SESSION_COOKIE_NAME,
+} from './session-cookie'
 
-const SESSION_COOKIE = 'session'
 const SESSION_MAX_AGE = 30 * 24 * 60 * 60
+const AUTH_INTENT_MAX_AGE = 8 * 60 * 60
+
+function sessionCookieOptions(maxAge: number) {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict' as const,
+    maxAge,
+    path: '/',
+  }
+}
+
+function setAuthIntentCookie(cookieStore: Awaited<ReturnType<typeof cookies>>) {
+  cookieStore.set(AUTH_INTENT_COOKIE_NAME, '1', sessionCookieOptions(AUTH_INTENT_MAX_AGE))
+}
+
+function clearLegacySessionCookie(cookieStore: Awaited<ReturnType<typeof cookies>>) {
+  cookieStore.delete(LEGACY_SESSION_COOKIE_NAME)
+}
 
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex')
@@ -17,19 +40,22 @@ export async function createSession(userId: string): Promise<string> {
     data: { userId, tokenHash, expiresAt },
   })
   const cookieStore = await cookies()
-  cookieStore.set(SESSION_COOKIE, token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
-    maxAge: SESSION_MAX_AGE,
-    path: '/',
-  })
+  clearLegacySessionCookie(cookieStore)
+  cookieStore.set(SESSION_COOKIE_NAME, token, sessionCookieOptions(SESSION_MAX_AGE))
+  setAuthIntentCookie(cookieStore)
   return token
+}
+
+export async function refreshAuthIntent(): Promise<boolean> {
+  const userId = await getSessionUserId()
+  if (!userId) return false
+  setAuthIntentCookie(await cookies())
+  return true
 }
 
 export async function getSessionUserId(): Promise<string | null> {
   const cookieStore = await cookies()
-  const token = cookieStore.get(SESSION_COOKIE)?.value
+  const token = cookieStore.get(SESSION_COOKIE_NAME)?.value
   if (!token) return null
   const tokenHash = hashToken(token)
   const session = await prisma.session.findFirst({
@@ -61,10 +87,12 @@ export async function getSessionUser(): Promise<{
 
 export async function destroySession(): Promise<void> {
   const cookieStore = await cookies()
-  const token = cookieStore.get(SESSION_COOKIE)?.value
+  const token = cookieStore.get(SESSION_COOKIE_NAME)?.value
   if (token) {
     const tokenHash = hashToken(token)
     await prisma.session.deleteMany({ where: { tokenHash } })
   }
-  cookieStore.delete(SESSION_COOKIE)
+  cookieStore.delete(SESSION_COOKIE_NAME)
+  cookieStore.delete(AUTH_INTENT_COOKIE_NAME)
+  clearLegacySessionCookie(cookieStore)
 }
