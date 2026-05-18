@@ -25,6 +25,7 @@ model User {
 
   sessions      Session[]
   conversations Conversation[]
+  uploadedFiles UploadedFile[]
 
   @@map("users")
 }
@@ -49,7 +50,7 @@ model Conversation {
   userId       String   @map("user_id")
   titleEnc     String?  @map("title_enc")
   sealedKeyB64 String   @map("sealed_key_b64")
-  model        String   @default("gpt-5.5")
+  model        String   @default("gpt-4o")
   isDecoy      Boolean  @default(false) @map("is_decoy")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
@@ -67,11 +68,14 @@ model Message {
   role           String
   contentEnc     String   @map("content_enc")
   sealedKeyB64   String   @map("sealed_key_b64")
+  citationsEnc   String?  @map("citations_enc")
+  citationsSealedKeyB64 String? @map("citations_sealed_key_b64")
   tokenCount     Int?     @map("token_count")
   model          String?
   createdAt      DateTime @default(now()) @map("created_at")
 
-  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversation Conversation       @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  attachments  MessageAttachment[]
 
   @@index([conversationId, createdAt])
   @@map("messages")
@@ -81,14 +85,32 @@ model UploadedFile {
   id             String   @id @default(uuid())
   conversationId String?  @map("conversation_id")
   userId         String   @map("user_id")
-  filenameEnc    String   @map("filename_enc")
-  contentEnc     String   @map("content_enc")
-  sealedKeyB64   String   @map("sealed_key_b64")
+  filename       String?
+  openaiFileId   String?  @map("openai_file_id")
+  filenameEnc    String?  @map("filename_enc")
+  contentEnc     String?  @map("content_enc")
+  sealedKeyB64   String?  @map("sealed_key_b64")
   mimeType       String?  @map("mime_type")
   sizeBytes      Int?     @map("size_bytes")
   createdAt      DateTime @default(now()) @map("created_at")
 
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attachments MessageAttachment[]
+
   @@index([userId])
   @@index([conversationId])
   @@map("uploaded_files")
+}
+
+model MessageAttachment {
+  id        String @id @default(uuid())
+  messageId String @map("message_id")
+  fileId    String @map("file_id")
+
+  message Message      @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  file    UploadedFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, fileId])
+  @@index([messageId])
+  @@map("message_attachments")
 }

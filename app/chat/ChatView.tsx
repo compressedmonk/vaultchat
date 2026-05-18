@@ -6,22 +6,10 @@ import {
   decryptSealedAesKey,
   decryptAesGcmWithRawKey,
 } from '@/lib/crypto/client-crypto'
-import { ChatMessage } from './ChatMessage'
-import { ChatInput } from './ChatInput'
+import { ChatMessage, type MessageAttachmentMeta } from './ChatMessage'
+import { ChatComposer, type SendPayload } from './ChatComposer'
 import type { StealthConfig } from './page'
-
-const AVAILABLE_MODELS = [
-  { id: 'gpt-5.5', label: 'GPT-5.5' },
-  { id: 'gpt-5.5-pro', label: 'GPT-5.5 Pro' },
-  { id: 'gpt-5.4', label: 'GPT-5.4' },
-  { id: 'gpt-5', label: 'GPT-5' },
-  { id: 'gpt-4.1', label: 'GPT-4.1' },
-  { id: 'gpt-4o', label: 'GPT-4o' },
-  { id: 'o4-mini', label: 'o4-mini' },
-  { id: 'o3', label: 'o3' },
-]
-
-const DEFAULT_MODEL = 'gpt-5.5'
+import { CHAT_MODELS, DEFAULT_MODEL, mapModel } from '@/lib/openai/models'
 const MODEL_STORAGE_KEY = 'vaultchat_model'
 
 const SUGGESTIONS = [
@@ -41,6 +29,7 @@ interface Message {
   role: 'user' | 'assistant' | 'system'
   content: string
   createdAt?: string
+  attachments?: MessageAttachmentMeta[]
 }
 
 interface Props {
@@ -56,15 +45,53 @@ interface Props {
 }
 
 async function decryptMessage(
-  msg: { id: string; role: string; contentEnc: string; sealedKeyB64: string; createdAt?: string },
+  msg: {
+    id: string
+    role: string
+    contentEnc: string
+    sealedKeyB64: string
+    citationsEnc?: string | null
+    citationsSealedKeyB64?: string | null
+    createdAt?: string
+    attachments?: MessageAttachmentMeta[]
+  },
   privateKey: CryptoKey
 ): Promise<Message> {
   try {
     const aesKey = await decryptSealedAesKey(msg.sealedKeyB64, privateKey)
-    const content = await decryptAesGcmWithRawKey(msg.contentEnc, aesKey)
-    return { id: msg.id, role: msg.role as Message['role'], content, createdAt: msg.createdAt }
+    let content = await decryptAesGcmWithRawKey(msg.contentEnc, aesKey)
+
+    if (msg.citationsEnc && msg.citationsSealedKeyB64) {
+      try {
+        const citKey = await decryptSealedAesKey(msg.citationsSealedKeyB64, privateKey)
+        const citJson = await decryptAesGcmWithRawKey(msg.citationsEnc, citKey)
+        const citations = JSON.parse(citJson) as { url: string; title?: string }[]
+        if (Array.isArray(citations) && citations.length > 0) {
+          const links = citations
+            .map((c) => `[${c.title || c.url}](${c.url})`)
+            .join('\n')
+          content = `${content}\n\n**Sources**\n${links}`
+        }
+      } catch {
+        // ignore citation decrypt errors
+      }
+    }
+
+    return {
+      id: msg.id,
+      role: msg.role as Message['role'],
+      content,
+      createdAt: msg.createdAt,
+      attachments: msg.attachments,
+    }
   } catch {
-    return { id: msg.id, role: msg.role as Message['role'], content: '[decryption failed]', createdAt: msg.createdAt }
+    return {
+      id: msg.id,
+      role: msg.role as Message['role'],
+      content: '[decryption failed]',
+      createdAt: msg.createdAt,
+      attachments: msg.attachments,
+    }
   }
 }
 
@@ -88,6 +115,7 @@ export function ChatView({
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [showScrollDown, setShowScrollDown] = useState(false)
   const [temporaryChat, setTemporaryChat] = useState(false)
+  const [toolStatus, setToolStatus] = useState<'searching' | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
   const modelDropdownRef = useRef<HTMLDivElement>(null)
@@ -115,8 +143,17 @@ export function ChatView({
       const data = await res.json()
 
       const decrypted = await Promise.all(
-        data.messages.map((m: { id: string; role: string; contentEnc: string; sealedKeyB64: string }) =>
-          decryptMessage(m, privateKey!)
+        data.messages.map(
+          (m: {
+            id: string
+            role: string
+            contentEnc: string
+            sealedKeyB64: string
+            citationsEnc?: string | null
+            citationsSealedKeyB64?: string | null
+            createdAt?: string
+            attachments?: MessageAttachmentMeta[]
+          }) => decryptMessage(m, privateKey!)
         )
       )
       if (!cancelled) {
@@ -187,15 +224,33 @@ export function ChatView({
   }, [])
 
   const doSend = useCallback(
-    async (content: string, isRegenerate = false) => {
+    async (payload: SendPayload | string, isRegenerate = false) => {
       if (streaming) return
 
+      const content = typeof payload === 'string' ? payload : payload.text
+      const attachmentIds = typeof payload === 'string' ? [] : payload.attachmentIds
+      const webSearch = typeof payload === 'string' ? false : payload.webSearch
+      const attachmentMeta: MessageAttachmentMeta[] =
+        typeof payload === 'string'
+          ? []
+          : payload.attachments.map((a) => ({
+              fileId: a.fileId,
+              filename: a.filename,
+              mimeType: a.mimeType,
+            }))
+
       if (!isRegenerate) {
-        const userMsg: Message = { id: `tmp-${Date.now()}`, role: 'user', content }
+        const userMsg: Message = {
+          id: `tmp-${Date.now()}`,
+          role: 'user',
+          content,
+          attachments: attachmentMeta.length > 0 ? attachmentMeta : undefined,
+        }
         setMessages((prev) => [...prev, userMsg])
       }
       setStreaming(true)
       setStreamContent('')
+      setToolStatus(null)
 
       const controller = new AbortController()
       abortRef.current = controller
@@ -216,6 +271,8 @@ export function ChatView({
             model: selectedModel,
             isDecoy: stealthConfig?.enabled ? !stealthUnlocked : false,
             temporary: temporaryChat,
+            webSearch,
+            attachmentIds: isRegenerate ? [] : attachmentIds,
           }),
           signal: controller.signal,
         })
@@ -261,6 +318,14 @@ export function ChatView({
                 setStreamContent(fullContent)
                 continue
               }
+              if (parsed.toolStatus === 'searching') {
+                setToolStatus('searching')
+                continue
+              }
+              if (parsed.toolStatus === 'done') {
+                setToolStatus(null)
+                continue
+              }
               const delta = parsed.choices?.[0]?.delta?.content
               if (delta) {
                 fullContent += delta
@@ -286,6 +351,7 @@ export function ChatView({
           }
         }
         setStreamContent('')
+        setToolStatus(null)
 
         if (!temporaryChat) {
           const isNew = res.headers.get('x-is-new') === '1'
@@ -302,13 +368,14 @@ export function ChatView({
         }
       } finally {
         setStreaming(false)
+        setToolStatus(null)
         abortRef.current = null
       }
     },
     [conversationId, streaming, onConversationCreated, onRefreshConversations, messages, selectedModel, stealthConfig, stealthUnlocked, temporaryChat]
   )
 
-  const handleSend = useCallback((content: string) => doSend(content, false), [doSend])
+  const handleSend = useCallback((payload: SendPayload) => doSend(payload, false), [doSend])
 
   const handleRegenerate = useCallback(() => {
     if (messages.length < 2) return
@@ -327,7 +394,8 @@ export function ChatView({
     abortRef.current?.abort()
   }, [])
 
-  const currentModelLabel = AVAILABLE_MODELS.find((m) => m.id === selectedModel)?.label ?? selectedModel
+  const currentModelLabel =
+    CHAT_MODELS.find((m) => m.id === mapModel(selectedModel))?.label ?? selectedModel
   const showRegenerate = !streaming && messages.length >= 2 && messages[messages.length - 1]?.role === 'assistant'
 
   return (
@@ -383,24 +451,29 @@ export function ChatView({
               className="absolute left-0 top-full mt-1 w-48 rounded-xl shadow-xl overflow-hidden z-50 py-1"
               style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-light)' }}
             >
-              {AVAILABLE_MODELS.map((m) => (
+              {CHAT_MODELS.map((m) => (
                 <button
                   key={m.id}
                   onClick={() => handleModelChange(m.id)}
-                  className="w-full text-left px-3 py-2 text-sm transition-colors flex items-center justify-between"
+                  className="w-full text-left px-3 py-2 text-sm transition-colors flex items-center justify-between gap-2"
                   style={{
-                    color: selectedModel === m.id ? 'var(--text-primary)' : 'var(--text-secondary)',
-                    background: selectedModel === m.id ? 'var(--accent-subtle)' : 'transparent',
+                    color: mapModel(selectedModel) === m.id ? 'var(--text-primary)' : 'var(--text-secondary)',
+                    background: mapModel(selectedModel) === m.id ? 'var(--accent-subtle)' : 'transparent',
                   }}
                   onMouseEnter={(e) => {
-                    if (selectedModel !== m.id) e.currentTarget.style.background = 'var(--bg-hover)'
+                    if (mapModel(selectedModel) !== m.id) e.currentTarget.style.background = 'var(--bg-hover)'
                   }}
                   onMouseLeave={(e) => {
-                    if (selectedModel !== m.id) e.currentTarget.style.background = 'transparent'
+                    if (mapModel(selectedModel) !== m.id) e.currentTarget.style.background = 'transparent'
                   }}
                 >
-                  {m.label}
-                  {selectedModel === m.id && (
+                  <span className="flex items-center gap-2">
+                    {m.label}
+                    {m.supportsWebSearch && (
+                      <span className="text-[10px] opacity-60" title="Web search supported">🌐</span>
+                    )}
+                  </span>
+                  {mapModel(selectedModel) === m.id && (
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                       <polyline points="20 6 9 17 4 12" />
                     </svg>
@@ -487,7 +560,9 @@ export function ChatView({
                 {SUGGESTIONS.map((s) => (
                   <button
                     key={s.prompt}
-                    onClick={() => handleSend(s.prompt)}
+                    onClick={() =>
+                      handleSend({ text: s.prompt, attachmentIds: [], attachments: [], webSearch: false })
+                    }
                     className="text-left px-4 py-3 rounded-xl text-sm transition-colors"
                     style={{
                       background: 'transparent',
@@ -518,10 +593,21 @@ export function ChatView({
                 <ChatMessage
                   role={m.role}
                   content={m.content}
+                  attachments={m.attachments}
                   onEdit={m.role === 'user' && !streaming ? (newContent) => handleEditMessage(idx, newContent) : undefined}
                 />
               </div>
             ))}
+
+            {streaming && toolStatus === 'searching' && (
+              <div
+                className="flex items-center gap-2 text-sm py-2 px-1"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                Searching the web…
+              </div>
+            )}
 
             {streaming && streamContent && (
               <ChatMessage role="assistant" content={streamContent} streaming />
@@ -571,11 +657,12 @@ export function ChatView({
         )}
       </div>
 
-      <ChatInput
+      <ChatComposer
         onSend={handleSend}
         onStop={handleStop}
         disabled={false}
         streaming={streaming}
+        selectedModel={selectedModel}
         stealthConfig={stealthConfig}
         onStealthUnlock={onStealthUnlock}
       />

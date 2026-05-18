@@ -26,12 +26,47 @@ export async function GET(
       role: true,
       contentEnc: true,
       sealedKeyB64: true,
+      citationsEnc: true,
+      citationsSealedKeyB64: true,
       tokenCount: true,
       model: true,
       createdAt: true,
+      attachments: {
+        select: {
+          file: {
+            select: {
+              id: true,
+              filename: true,
+              mimeType: true,
+              sizeBytes: true,
+            },
+          },
+        },
+      },
     },
     orderBy: { createdAt: 'asc' },
   })
 
-  return NextResponse.json({ messages })
+  const formatted = messages.map((m) => ({
+    id: m.id,
+    role: m.role,
+    contentEnc: m.contentEnc,
+    sealedKeyB64: m.sealedKeyB64,
+    citationsEnc: m.citationsEnc,
+    citationsSealedKeyB64: m.citationsSealedKeyB64,
+    tokenCount: m.tokenCount,
+    model: m.model,
+    createdAt: m.createdAt,
+    attachments: m.attachments
+      .map((a) => a.file)
+      .filter((f) => f.filename)
+      .map((f) => ({
+        fileId: f.id,
+        filename: f.filename!,
+        mimeType: f.mimeType,
+        sizeBytes: f.sizeBytes,
+      })),
+  }))
+
+  return NextResponse.json({ messages: formatted })
 }

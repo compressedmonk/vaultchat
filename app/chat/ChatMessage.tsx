@@ -5,14 +5,21 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { CodeBlock } from './CodeBlock'
 
+export interface MessageAttachmentMeta {
+  fileId: string
+  filename: string
+  mimeType?: string | null
+}
+
 interface Props {
   role: 'user' | 'assistant' | 'system'
   content: string
   streaming?: boolean
+  attachments?: MessageAttachmentMeta[]
   onEdit?: (newContent: string) => void
 }
 
-export function ChatMessage({ role, content, streaming, onEdit }: Props) {
+export function ChatMessage({ role, content, streaming, attachments, onEdit }: Props) {
   const [copied, setCopied] = useState(false)
   const [editing, setEditing] = useState(false)
   const [editValue, setEditValue] = useState(content)
@@ -93,7 +100,29 @@ export function ChatMessage({ role, content, streaming, onEdit }: Props) {
                 className="rounded-3xl px-4 py-2.5 text-[15px]"
                 style={{ background: 'var(--message-surface)', color: 'var(--text-primary)' }}
               >
-                <p className="whitespace-pre-wrap">{content}</p>
+                {attachments && attachments.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {attachments.map((a) => (
+                      <span
+                        key={a.fileId}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px]"
+                        style={{
+                          background: 'var(--bg-hover)',
+                          color: 'var(--text-secondary)',
+                        }}
+                      >
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                          <polyline points="14 2 14 8 20 8" />
+                        </svg>
+                        {a.filename}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {content && content !== '(attachment)' && (
+                  <p className="whitespace-pre-wrap">{content}</p>
+                )}
               </div>
               {onEdit && (
                 <div className="flex justify-end mt-1 opacity-0 group-hover:opacity-100 hover:!opacity-100 transition-opacity">

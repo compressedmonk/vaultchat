@@ -5,10 +5,19 @@ import { prisma } from '@/lib/prisma'
 import { aesGcmEncrypt, wrapAesKeyWithPublicKey } from '@/lib/sealed-encryption'
 import { randomBytes } from 'crypto'
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit'
+import { getOpenAI } from '@/lib/openai/client'
+import {
+  buildResponsesInput,
+  extractCitationsFromResponse,
+  normalizeResponsesStreamEvent,
+  streamEventToSseLine,
+  type ChatAttachment,
+  type Citation,
+} from '@/lib/openai/responses'
+import { DEFAULT_MODEL, mapModel, resolveModelForWebSearch } from '@/lib/openai/models'
 
 const CHAT_RATE_LIMIT = 30
 const CHAT_RATE_WINDOW_MS = 60 * 1000
-const DEFAULT_MODEL = 'gpt-5.5'
 
 const SYSTEM_PROMPT = `You are concise by default. Answer in 2-5 sentences unless the user explicitly asks for detail. No long explanations, no summaries, no extra suggestions.
 
@@ -19,19 +28,52 @@ const SYSTEM_PROMPT = `You are concise by default. Answer in 2-5 sentences unles
 - Don't repeat what the user said. Don't over-format simple replies.
 - Use markdown and code blocks only when showing code or when structure genuinely helps.
 - Confident, warm, efficient. Say what you think. If you don't know, say so.
-- Only become detailed when the user asks for depth or the topic requires it.`
-
-function getOpenAI(): OpenAI {
-  const key = process.env.OPENAI_API_KEY
-  if (!key) throw new Error('No OpenAI API key configured')
-  return new OpenAI({ apiKey: key })
-}
+- Only become detailed when the user asks for depth or the topic requires it.
+- When using web search, cite sources inline with markdown links where relevant.`
 
 function sealMessage(publicKeySpkiB64: string, plaintext: string) {
   const aesKey = randomBytes(32)
   const sealedKeyB64 = wrapAesKeyWithPublicKey(publicKeySpkiB64, aesKey)
   const contentEnc = aesGcmEncrypt(aesKey, plaintext)
   return { sealedKeyB64, contentEnc }
+}
+
+function sealOptionalJson(publicKeySpkiB64: string, data: unknown) {
+  if (!data || (Array.isArray(data) && data.length === 0)) return null
+  const json = JSON.stringify(data)
+  const aesKey = randomBytes(32)
+  const sealedKeyB64 = wrapAesKeyWithPublicKey(publicKeySpkiB64, aesKey)
+  const contentEnc = aesGcmEncrypt(aesKey, json)
+  return { sealedKeyB64, contentEnc }
+}
+
+async function loadAttachments(
+  userId: string,
+  attachmentIds: string[]
+): Promise<ChatAttachment[]> {
+  if (!attachmentIds.length) return []
+
+  const files = await prisma.uploadedFile.findMany({
+    where: {
+      id: { in: attachmentIds },
+      userId,
+    },
+  })
+
+  const byId = new Map(files.map((f) => [f.id, f]))
+  const result: ChatAttachment[] = []
+
+  for (const id of attachmentIds) {
+    const f = byId.get(id)
+    if (!f?.openaiFileId || !f.filename || !f.mimeType) continue
+    result.push({
+      openaiFileId: f.openaiFileId,
+      filename: f.filename,
+      mimeType: f.mimeType,
+    })
+  }
+
+  return result
 }
 
 async function generateTitle(
@@ -72,6 +114,58 @@ async function generateTitle(
   }
 }
 
+async function streamResponsesToClient(
+  stream: AsyncIterable<unknown>,
+  onComplete: (fullText: string, citations: Citation[]) => Promise<void>
+): Promise<ReadableStream<Uint8Array>> {
+  const encoder = new TextEncoder()
+  let fullResponse = ''
+  let finalResponse: OpenAI.Responses.Response | null = null
+
+  return new ReadableStream({
+    async start(controller) {
+      try {
+        for await (const event of stream) {
+          if (
+            event &&
+            typeof event === 'object' &&
+            'type' in event &&
+            (event as { type: string }).type === 'response.completed' &&
+            'response' in event
+          ) {
+            finalResponse = (event as { response: OpenAI.Responses.Response }).response
+          }
+
+          for (const normalized of normalizeResponsesStreamEvent(event)) {
+            if (normalized.type === 'content') {
+              fullResponse += normalized.delta
+            }
+            const line = streamEventToSseLine(normalized)
+            if (line) controller.enqueue(encoder.encode(line))
+          }
+        }
+
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+        controller.close()
+
+        const citations = finalResponse
+          ? extractCitationsFromResponse(finalResponse)
+          : []
+
+        if (fullResponse) {
+          await onComplete(fullResponse, citations)
+        }
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : 'Stream error'
+        controller.enqueue(
+          encoder.encode(`data: ${JSON.stringify({ error: errMsg })}\n\n`)
+        )
+        controller.close()
+      }
+    },
+  })
+}
+
 export async function POST(request: NextRequest) {
   const userId = await getSessionUserId()
   if (!userId) {
@@ -90,10 +184,32 @@ export async function POST(request: NextRequest) {
   const requestModel: string = body.model ?? DEFAULT_MODEL
   const isDecoy: boolean = body.isDecoy === true
   const isTemporary: boolean = body.temporary === true
+  const webSearch: boolean = body.webSearch === true
+  const attachmentIds: string[] = Array.isArray(body.attachmentIds)
+    ? body.attachmentIds.filter((id: unknown) => typeof id === 'string')
+    : []
 
-  if (!userMessage.trim()) {
+  if (!userMessage.trim() && attachmentIds.length === 0) {
     return NextResponse.json({ error: 'Empty message' }, { status: 400 })
   }
+
+  const attachments = await loadAttachments(userId, attachmentIds)
+  if (attachmentIds.length > 0 && attachments.length !== attachmentIds.length) {
+    return NextResponse.json({ error: 'Invalid attachment' }, { status: 400 })
+  }
+
+  const model = resolveModelForWebSearch(requestModel, webSearch)
+  const tools = webSearch
+    ? [{ type: 'web_search_preview' as const }]
+    : undefined
+
+  const openai = getOpenAI()
+  const input = buildResponsesInput({
+    systemPrompt: SYSTEM_PROMPT,
+    history,
+    userMessage,
+    attachments,
+  })
 
   if (!isTemporary) {
     const user = await prisma.user.findUnique({
@@ -108,14 +224,13 @@ export async function POST(request: NextRequest) {
     let isNew = false
 
     if (!conversationId) {
-      const titleAesKey = randomBytes(32)
-      const titleSealedKeyB64 = wrapAesKeyWithPublicKey(pubKey, titleAesKey)
+      const titleSealedKeyB64 = wrapAesKeyWithPublicKey(pubKey, randomBytes(32))
 
       const created = await prisma.conversation.create({
         data: {
           userId,
           sealedKeyB64: titleSealedKeyB64,
-          model: requestModel,
+          model: mapModel(requestModel),
           isDecoy,
         },
       })
@@ -130,8 +245,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const { sealedKeyB64: userSealedKey, contentEnc: userContentEnc } = sealMessage(pubKey, userMessage)
-    await prisma.message.create({
+    const { sealedKeyB64: userSealedKey, contentEnc: userContentEnc } = sealMessage(
+      pubKey,
+      userMessage || '(attachment)'
+    )
+    const userMsg = await prisma.message.create({
       data: {
         conversationId,
         role: 'user',
@@ -140,80 +258,61 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    const apiMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-      { role: 'system', content: SYSTEM_PROMPT },
-    ]
-    for (const h of history) {
-      if (h.role === 'user' || h.role === 'assistant') {
-        apiMessages.push({ role: h.role, content: h.content })
+    if (attachmentIds.length > 0) {
+      for (const fileId of attachmentIds) {
+        await prisma.messageAttachment.create({
+          data: { messageId: userMsg.id, fileId },
+        }).catch(() => {})
       }
     }
-    apiMessages.push({ role: 'user', content: userMessage })
 
-    const openai = getOpenAI()
-    const model = requestModel
+    const convId = conversationId
+    const shouldGenerateTitle = isNew
 
-    let stream: AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>
+    let stream: AsyncIterable<unknown>
     try {
-      stream = await openai.chat.completions.create({
+      stream = await openai.responses.create({
         model,
-        messages: apiMessages,
+        input,
+        tools,
         stream: true,
+        store: false,
       })
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'OpenAI error'
       return NextResponse.json({ error: msg }, { status: 502 })
     }
 
-    const encoder = new TextEncoder()
-    let fullResponse = ''
-    const convId = conversationId
-    const shouldGenerateTitle = isNew
+    const readableStream = await streamResponsesToClient(
+      stream,
+      async (fullResponse, citations) => {
+        const { sealedKeyB64: asstSealedKey, contentEnc: asstContentEnc } = sealMessage(
+          pubKey,
+          fullResponse
+        )
+        const citationsSeal = sealOptionalJson(pubKey, citations)
 
-    const readableStream = new ReadableStream({
-      async start(controller) {
-        try {
-          for await (const chunk of stream) {
-            const content = chunk.choices[0]?.delta?.content
-            if (content) {
-              fullResponse += content
-            }
-            const line = `data: ${JSON.stringify(chunk)}\n\n`
-            controller.enqueue(encoder.encode(line))
-          }
-          controller.enqueue(encoder.encode('data: [DONE]\n\n'))
-          controller.close()
+        await prisma.message.create({
+          data: {
+            conversationId: convId,
+            role: 'assistant',
+            contentEnc: asstContentEnc,
+            sealedKeyB64: asstSealedKey,
+            citationsEnc: citationsSeal?.contentEnc ?? null,
+            citationsSealedKeyB64: citationsSeal?.sealedKeyB64 ?? null,
+            model,
+          },
+        })
+        await prisma.conversation.update({
+          where: { id: convId },
+          data: { updatedAt: new Date() },
+        })
 
-          if (fullResponse) {
-            const { sealedKeyB64: asstSealedKey, contentEnc: asstContentEnc } = sealMessage(
-              pubKey,
-              fullResponse
-            )
-            await prisma.message.create({
-              data: {
-                conversationId: convId,
-                role: 'assistant',
-                contentEnc: asstContentEnc,
-                sealedKeyB64: asstSealedKey,
-                model,
-              },
-            })
-            await prisma.conversation.update({
-              where: { id: convId },
-              data: { updatedAt: new Date() },
-            })
-
-            if (shouldGenerateTitle) {
-              generateTitle(openai, userMessage, fullResponse, pubKey, convId)
-            }
-          }
-        } catch (err) {
-          const errMsg = err instanceof Error ? err.message : 'Stream error'
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: errMsg })}\n\n`))
-          controller.close()
+        if (shouldGenerateTitle) {
+          generateTitle(openai, userMessage, fullResponse, pubKey, convId)
         }
-      },
-    })
+      }
+    )
 
     return new Response(readableStream, {
       headers: {
@@ -226,48 +325,22 @@ export async function POST(request: NextRequest) {
     })
   }
 
-  // Temporary chat: no DB writes, just stream from OpenAI
-  const apiMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-    { role: 'system', content: SYSTEM_PROMPT },
-  ]
-  for (const h of history) {
-    if (h.role === 'user' || h.role === 'assistant') {
-      apiMessages.push({ role: h.role, content: h.content })
-    }
-  }
-  apiMessages.push({ role: 'user', content: userMessage })
-
-  const openai = getOpenAI()
-
-  let stream: AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>
+  // Temporary chat: no DB writes
+  let stream: AsyncIterable<unknown>
   try {
-    stream = await openai.chat.completions.create({
-      model: requestModel,
-      messages: apiMessages,
+    stream = await openai.responses.create({
+      model,
+      input,
+      tools,
       stream: true,
+      store: false,
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'OpenAI error'
     return NextResponse.json({ error: msg }, { status: 502 })
   }
 
-  const encoder = new TextEncoder()
-  const readableStream = new ReadableStream({
-    async start(controller) {
-      try {
-        for await (const chunk of stream) {
-          const line = `data: ${JSON.stringify(chunk)}\n\n`
-          controller.enqueue(encoder.encode(line))
-        }
-        controller.enqueue(encoder.encode('data: [DONE]\n\n'))
-        controller.close()
-      } catch (err) {
-        const errMsg = err instanceof Error ? err.message : 'Stream error'
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: errMsg })}\n\n`))
-        controller.close()
-      }
-    },
-  })
+  const readableStream = await streamResponsesToClient(stream, async () => {})
 
   return new Response(readableStream, {
     headers: {
